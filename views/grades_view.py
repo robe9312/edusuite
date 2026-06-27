@@ -1,26 +1,27 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QLabel, QMessageBox,
-    QComboBox, QFrame, QDialog, QRadioButton, QButtonGroup,
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox,
+    QComboBox, QLineEdit, QHeaderView, QDialog, QRadioButton, QButtonGroup,
+    QFrame,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QShortcut, QKeySequence, QUndoStack
 
-from db.database import (
-    get_students_by_course, upsert_grade, get_grade,
-    get_distinct_courses, get_subjects_for_course, get_subjects_by_group,
-    get_all_students,
-)
+from db.database import get_all_students
 from config import *
-from ui_style import Combo, Table, Header
+from models.column_definition import build_grade_columns, ColumnType
+from models.spreadsheet_model import SpreadsheetTableModel
+from models.grade_proxy import GradeProxyModel
+from widgets.spreadsheet_view import SpreadsheetView
+from widgets.student_panel import StudentPanel
+from core.clipboard_engine import ClipboardEngine
+from repositories import subject_repo, student_repo, course_repo, grade_repo
 
-PERIODS = ["T1", "T2", "T3"]
-PERIOD_SPAN_LABELS = {"T1": "PRIMER TRIMESTRE", "T2": "SEGUNDO TRIMESTRE", "T3": "TERCER TRIMESTRE"}
 
 EXPORT_MODES = [
-    ("course_trimester", "Curso + Trimestre", "Una hoja por curso y trimestre"),
-    ("course_all", "Curso completo (3T)", "Todas las asignaturas y trimestres"),
-    ("student", "Por alumno", "Expediente completo de un alumno"),
-    ("summary", "Resumen por trimestre", "Todas las materias, todos los cursos"),
+    ("course_trimester", "Curso + Trimestre", ""),
+    ("course_all", "Curso completo (3T)", ""),
+    ("student", "Por alumno", ""),
+    ("summary", "Resumen por trimestre", ""),
 ]
 
 
@@ -39,11 +40,9 @@ class ExportDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
-
         title = QLabel("Selecciona el tipo de exportación")
         title.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 14px;")
         layout.addWidget(title)
-
         self.mode_group = QButtonGroup(self)
         mode_layout = QVBoxLayout()
         mode_layout.setSpacing(8)
@@ -51,63 +50,53 @@ class ExportDialog(QDialog):
         for key, label, desc in EXPORT_MODES:
             rb = QRadioButton(f" {label}")
             rb.setStyleSheet(f"""
-                QRadioButton {{
-                    color: {COLOR_TEXT}; font-size: 13px; padding: 6px 10px;
-                    border: 1px solid {COLOR_BORDER}; background: {COLOR_INPUT};
-                }}
+                QRadioButton {{ color: {COLOR_TEXT}; font-size: 13px;
+                    padding: 6px 10px; border: 1px solid {COLOR_BORDER};
+                    background: {COLOR_INPUT}; }}
                 QRadioButton:hover {{ background: {COLOR_HOVER}; }}
                 QRadioButton::indicator {{
                     width: 14px; height: 14px; border: 1px solid {COLOR_BORDER};
-                    background: {COLOR_INPUT};
-                }}
+                    background: {COLOR_INPUT}; }}
                 QRadioButton::indicator:checked {{
-                    background: {COLOR_ACCENT}; border-color: {COLOR_ACCENT};
-                }}
+                    background: {COLOR_ACCENT}; border-color: {COLOR_ACCENT}; }}
             """)
-            desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: 11px; padding-left: 26px;")
-            item_w = QVBoxLayout()
-            item_w.setSpacing(0)
-            item_w.addWidget(rb)
-            item_w.addWidget(desc_lbl)
-            mode_layout.addLayout(item_w)
+            mode_layout.addWidget(rb)
             self.mode_group.addButton(rb, len(self.mode_radios))
             self.mode_radios.append((key, rb))
-
         layout.addLayout(mode_layout)
 
         opts = QHBoxLayout()
         opts.setSpacing(12)
-
-        ol = QVBoxLayout()
-        ol.setSpacing(4)
-        ol.addWidget(QLabel("Curso:"))
-        ol.itemAt(0).widget().setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px;")
-        self.course_combo = Combo()
-        self.course_combo.addItems(self.courses)
-        ol.addWidget(self.course_combo)
-        opts.addLayout(ol)
-
-        pl = QVBoxLayout()
-        pl.setSpacing(4)
-        pl.addWidget(QLabel("Trimestre:"))
-        pl.itemAt(0).widget().setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px;")
-        self.period_combo = Combo()
-        self.period_combo.addItems(["T1", "T2", "T3"])
-        pl.addWidget(self.period_combo)
-        opts.addLayout(pl)
+        for label, attr, items in [
+            ("Curso:", "course_combo", True),
+            ("Trimestre:", "period_combo", ["T1", "T2", "T3"]),
+        ]:
+            ol = QVBoxLayout()
+            ol.setSpacing(4)
+            lbl = QLabel(label)
+            lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px;")
+            ol.addWidget(lbl)
+            combo = QComboBox()
+            combo.setStyleSheet(f"QComboBox {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; padding: 4px 8px; min-height: 28px; }}")
+            if isinstance(items, list):
+                combo.addItems(items)
+            else:
+                combo.addItems(self.courses)
+            ol.addWidget(combo)
+            opts.addLayout(ol)
+            setattr(self, attr, combo)
 
         sl = QVBoxLayout()
         sl.setSpacing(4)
         sl.addWidget(QLabel("Alumno:"))
         sl.itemAt(0).widget().setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px;")
-        self.student_combo = Combo()
+        self.student_combo = QComboBox()
+        self.student_combo.setStyleSheet(f"QComboBox {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; padding: 4px 8px; min-height: 28px; }}")
         students = get_all_students()
         for s in students:
             self.student_combo.addItem(f"{s.get('code','')} - {s.get('nombre','')}", s["id"])
         sl.addWidget(self.student_combo)
         opts.addLayout(sl)
-
         layout.addLayout(opts)
 
         self.mode_group.buttonClicked.connect(self._on_mode_change)
@@ -116,21 +105,11 @@ class ExportDialog(QDialog):
         btns = QHBoxLayout()
         btns.addStretch()
         cancel_btn = QPushButton("Cancelar")
-        cancel_btn.setStyleSheet(f"""
-            QPushButton {{ padding: 0 24px; height: 36px; border: none;
-                background: transparent; color: {COLOR_TEXT_MUTED}; font-size: 13px; }}
-            QPushButton:hover {{ background: {COLOR_HOVER}; }}
-        """)
+        cancel_btn.setStyleSheet(f"QPushButton {{ padding: 0 24px; height: 36px; border: none; background: transparent; color: {COLOR_TEXT_MUTED}; font-size: 13px; }} QPushButton:hover {{ background: {COLOR_HOVER}; }}")
         cancel_btn.clicked.connect(self.reject)
-
         export_btn = QPushButton("Exportar")
-        export_btn.setStyleSheet(f"""
-            QPushButton {{ padding: 0 24px; height: 36px; border: none;
-                background: {COLOR_ACCENT}; color: #ffffff; font-size: 13px; }}
-            QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
-        """)
+        export_btn.setStyleSheet(f"QPushButton {{ padding: 0 24px; height: 36px; border: none; background: {COLOR_ACCENT}; color: #ffffff; font-size: 13px; }} QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}")
         export_btn.clicked.connect(self._accept)
-
         btns.addWidget(cancel_btn)
         btns.addWidget(export_btn)
         layout.addLayout(btns)
@@ -140,12 +119,9 @@ class ExportDialog(QDialog):
         if btn_id < 0:
             btn_id = 0
         key = self.mode_radios[btn_id][0]
-        show_course = key in ("course_trimester", "course_all")
-        show_period = key in ("course_trimester", "summary")
-        show_student = key == "student"
-        self.course_combo.parent().setVisible(show_course)
-        self.period_combo.parent().setVisible(show_period)
-        self.student_combo.parent().setVisible(show_student)
+        self.course_combo.parent().setVisible(key in ("course_trimester", "course_all"))
+        self.period_combo.parent().setVisible(key in ("course_trimester", "summary"))
+        self.student_combo.parent().setVisible(key == "student")
 
     def _accept(self):
         btn_id = self.mode_group.checkedId()
@@ -164,240 +140,249 @@ class ExportDialog(QDialog):
         self.accept()
 
 
+class StatBadge(QFrame):
+    def __init__(self, label, value="—", color=COLOR_TEXT):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(0)
+        self.val_lbl = QLabel(str(value))
+        self.val_lbl.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {color};")
+        layout.addWidget(self.val_lbl)
+        lbl = QLabel(label)
+        lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 10px;")
+        layout.addWidget(lbl)
+
+
 class GradesView(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
+        self._current_subjects = []
+        self._students_data = []
+        self._model = None
+        self._proxy = None
+        self._undo_stack = QUndoStack()
+        self._clipboard = None
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(200)
+        self._search_timer.timeout.connect(self._apply_search)
         self._build()
+        QShortcut(QKeySequence("Ctrl+S"), self, self._save_all)
+        QShortcut(QKeySequence("Ctrl+Z"), self, self._undo_stack.undo)
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self, self._undo_stack.redo)
 
     def _build(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 32, 32, 32)
-        layout.setSpacing(20)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        h = Header("Registro de Notas")
-        layout.addWidget(h)
+        main_area = QWidget()
+        layout = QVBoxLayout(main_area)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
 
-        filters = QHBoxLayout()
-        filters.setSpacing(10)
+        header = QLabel("Libro de Calificaciones")
+        header.setStyleSheet(f"font-size: 20px; font-weight: 600; color: {COLOR_TEXT};")
+        layout.addWidget(header)
 
-        fl = QLabel("Curso:")
-        fl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px;")
-        filters.addWidget(fl)
+        filter_bar = QHBoxLayout()
+        filter_bar.setSpacing(10)
 
-        self.course_combo = Combo()
+        for lbl, attr, items in [
+            ("Curso:", "course_combo", True),
+            ("Trimestre:", "period_combo", PERIODS),
+        ]:
+            l = QLabel(lbl)
+            l.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 11px;")
+            filter_bar.addWidget(l)
+            combo = QComboBox()
+            combo.setStyleSheet(f"QComboBox {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; padding: 4px 10px; min-height: 30px; min-width: 80px; }} QComboBox:focus {{ border-color: {COLOR_ACCENT}; }}")
+            setattr(self, attr, combo)
+            filter_bar.addWidget(combo)
+
         self.course_combo.currentTextChanged.connect(self._load_grades)
-        filters.addWidget(self.course_combo)
+        self.period_combo.currentTextChanged.connect(self._load_grades)
 
-        filters.addStretch()
+        filter_bar.addStretch()
 
-        save_btn = QPushButton("Guardar Todo")
-        save_btn.setStyleSheet(f"""
-            QPushButton {{
-                padding: 0 16px; height: 36px; border: none;
-                background: {COLOR_SUCCESS}; color: #ffffff; font-size: 13px;
-            }}
-            QPushButton:hover {{ background: #3d9142; }}
-        """)
-        save_btn.clicked.connect(self._save_all)
-        filters.addWidget(save_btn)
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("Buscar alumno...")
+        self._search_input.setFixedWidth(200)
+        self._search_input.setFixedHeight(32)
+        self._search_input.textChanged.connect(self._on_search)
+        self._search_input.setStyleSheet(f"QLineEdit {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; font-size: 12px; padding: 0 12px; }} QLineEdit:focus {{ border-color: {COLOR_ACCENT}; }}")
+        filter_bar.addWidget(self._search_input)
 
-        export_btn = QPushButton("Exportar Excel")
-        export_btn.setStyleSheet(f"""
-            QPushButton {{
-                padding: 0 16px; height: 36px; border: none;
-                background: {COLOR_ACCENT}; color: #ffffff; font-size: 13px;
-            }}
-            QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
-        """)
+        self.save_btn = QPushButton("Guardar")
+        self.save_btn.setStyleSheet(f"QPushButton {{ padding: 0 16px; height: 32px; border: none; background: {COLOR_SUCCESS}; color: #ffffff; font-size: 12px; }} QPushButton:hover {{ background: #3d9142; }}")
+        self.save_btn.clicked.connect(self._save_all)
+        filter_bar.addWidget(self.save_btn)
+
+        export_btn = QPushButton("Exportar")
+        export_btn.setStyleSheet(f"QPushButton {{ padding: 0 16px; height: 32px; border: none; background: {COLOR_ACCENT}; color: #ffffff; font-size: 12px; }} QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}")
         export_btn.clicked.connect(self._export_dialog)
-        filters.addWidget(export_btn)
+        filter_bar.addWidget(export_btn)
 
-        layout.addLayout(filters)
+        layout.addLayout(filter_bar)
 
-        self.grades_table = Table()
-        self.grades_table.setAlternatingRowColors(False)
-        layout.addWidget(self.grades_table)
+        self.spreadsheet = SpreadsheetView()
+        self.spreadsheet.main_table.clicked.connect(self._on_row_click)
+        self.spreadsheet.frozen_table.clicked.connect(self._on_row_click)
+        layout.addWidget(self.spreadsheet, 1)
 
-    def _clear_table(self):
-        self.grades_table.clear()
-        self.grades_table.setRowCount(0)
-        self.grades_table.setColumnCount(0)
+        self._clipboard = ClipboardEngine(self.spreadsheet)
+        for t in [self.spreadsheet.frozen_table, self.spreadsheet.main_table]:
+            QShortcut(QKeySequence("Ctrl+C"), t, self._clipboard.copy)
+            QShortcut(QKeySequence("Ctrl+V"), t, self._clipboard.paste)
+            QShortcut(QKeySequence("Ctrl+X"), t, self._clipboard.cut)
+            QShortcut(QKeySequence("Delete"), t, self._clipboard.delete_selection)
+
+        footer = QHBoxLayout()
+        self._footer_frame = QWidget()
+        self._footer_layout = QHBoxLayout(self._footer_frame)
+        self._footer_layout.setContentsMargins(0, 0, 0, 0)
+        self._footer_layout.setSpacing(24)
+        footer.addWidget(self._footer_frame)
+        footer.addStretch()
+        layout.addLayout(footer)
+
+        outer.addWidget(main_area, 1)
+
+        self.student_panel = StudentPanel()
+        self.student_panel.close_btn.clicked.connect(self._close_panel)
+        outer.addWidget(self.student_panel)
+
+    def _on_search(self, text):
+        self._search_timer.start()
+
+    def _apply_search(self):
+        text = self._search_input.text().strip().lower()
+        if self._proxy:
+            self._proxy.set_search_text(text)
+
+    def _on_row_click(self, index):
+        row = index.row()
+        if self._proxy:
+            src_idx = self._proxy.mapToSource(index)
+            row = src_idx.row()
+        if row < 0 or row >= len(self._students_data):
+            return
+        self.student_panel.show_student(self._students_data[row])
+
+    def _close_panel(self):
+        self.student_panel.hide_panel()
 
     def _load_grades(self):
         course = self.course_combo.currentText()
+        period = self.period_combo.currentText()
         if not course:
-            self._clear_table()
+            self.spreadsheet.setModel(None)
             return
 
-        students = get_students_by_course(course)
-        subjects = get_subjects_for_course(course)
-        if not subjects:
-            level_key = COURSE_TO_LEVEL.get(course)
-            if level_key:
-                subjects = get_subjects_by_group(level_key)
-
-        n_sub = len(subjects)
-        if n_sub == 0:
-            self._clear_table()
-            return
-
-        n_cols = 2 + n_sub * 3
-        n_rows = len(students)
-
-        self.grades_table.setColumnCount(n_cols)
-        self.grades_table.setRowCount(n_rows + 2)
-
-        header_font = "font-size: 10px; letter-spacing: 1px;"
-
-        for c in range(n_cols):
-            item = QTableWidgetItem()
-            item.setFlags(Qt.ItemIsEnabled)
-            self.grades_table.setItem(0, c, item)
-            item2 = QTableWidgetItem()
-            item2.setFlags(Qt.ItemIsEnabled)
-            self.grades_table.setItem(1, c, item2)
-
-        self.grades_table.setSpan(0, 0, 2, 1)
-        self.grades_table.setSpan(0, 1, 2, 1)
-        self._set_header_cell(0, 0, "CÓDIGO")
-        self._set_header_cell(0, 1, "ESTUDIANTE")
-
-        for pi, period in enumerate(PERIODS):
-            start_col = 2 + pi * n_sub
-            end_col = start_col + n_sub - 1
-            self.grades_table.setSpan(0, start_col, 1, n_sub)
-            period_label = PERIOD_SPAN_LABELS.get(period, period)
-            self._set_header_cell(0, start_col, period_label)
-
-            for si, subj in enumerate(subjects):
-                col = start_col + si
-                self._set_header_cell(1, col, subj["name"].upper())
-
-        self._subject_column_map = {}
-        for pi, period in enumerate(PERIODS):
-            for si, subj in enumerate(subjects):
-                col = 2 + pi * n_sub + si
-                self._subject_column_map[col] = {
-                    "student_id": None,
-                    "subject_id": subj["id"],
-                    "period": period,
-                }
-
+        students = student_repo.by_course(course)
+        subjects = subject_repo.for_course(course)
         self._current_subjects = subjects
+        self._students_data = students
 
-        for row, stu in enumerate(students, start=2):
-            code_item = QTableWidgetItem(stu.get("code", ""))
-            code_item.setFlags(code_item.flags() & ~Qt.ItemIsEditable)
-            self.grades_table.setItem(row, 0, code_item)
+        if not subjects or not students:
+            self.spreadsheet.setModel(None)
+            return
 
-            name_item = QTableWidgetItem(stu.get("nombre", ""))
-            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-            name_item.setToolTip(stu.get("nombre", ""))
-            self.grades_table.setItem(row, 1, name_item)
+        cols, _ = build_grade_columns(subjects, period)
 
-            for pi, period in enumerate(PERIODS):
-                for si, subj in enumerate(subjects):
-                    col = 2 + pi * n_sub + si
-                    g = get_grade(stu["id"], subj["id"], period)
-                    cell = QTableWidgetItem()
-                    if g:
-                        score = float(g["score"])
-                        cell.setData(Qt.DisplayRole, score)
-                    cell.setData(Qt.UserRole, {
-                        "student_id": stu["id"],
-                        "subject_id": subj["id"],
-                        "period": period,
-                    })
-                    self.grades_table.setItem(row, col, cell)
+        def load_cell(row_id, col_def):
+            meta = col_def.meta
+            if "subject_id" in meta and "period" in meta:
+                g = grade_repo.get_grade(row_id, meta["subject_id"], meta["period"])
+                if g:
+                    try:
+                        return float(g["score"])
+                    except (ValueError, TypeError):
+                        pass
+            return None
 
-        self.grades_table.setColumnWidth(0, 90)
-        self.grades_table.setColumnWidth(1, 260)
-        col_width = max(70, 900 // max(n_sub, 1))
-        for c in range(2, n_cols):
-            self.grades_table.setColumnWidth(c, col_width)
+        def save_cell(row_id, col_id, val):
+            for col in cols:
+                if col.id == col_id and col.meta:
+                    meta = col.meta
+                    if "subject_id" in meta and "period" in meta:
+                        if val is not None:
+                            grade_repo.set_grade(row_id, meta["subject_id"], meta["period"], val)
+                        return
 
-        self.grades_table.setRowHeight(0, 28)
-        self.grades_table.setRowHeight(1, 28)
+        self._model = SpreadsheetTableModel(
+            cols, students,
+            load_cell_fn=load_cell,
+            save_cell_fn=save_cell,
+            undo_stack=self._undo_stack,
+            repo=grade_repo,
+        )
+        self._proxy = GradeProxyModel()
+        self._proxy.setSourceModel(self._model)
+        self.spreadsheet.setModel(self._proxy)
+        self._apply_search()
+        self._update_footer()
 
-        self.grades_table.setSelectionMode(QTableWidget.SingleSelection)
-        self.grades_table.setSelectionBehavior(QTableWidget.SelectItems)
+    def _on_selection_changed(self):
+        pass
 
-    def _set_header_cell(self, row, col, text):
-        item = self.grades_table.item(row, col)
-        if item is None:
-            item = QTableWidgetItem()
-            item.setFlags(Qt.ItemIsEnabled)
-            self.grades_table.setItem(row, col, item)
-        item.setText(text)
-        item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
-        bg = COLOR_PANEL if row == 0 else COLOR_SURFACE
-        item.setBackground(bg)
-        fg = COLOR_TEXT if row == 0 else COLOR_TEXT_MUTED
-        item.setForeground(fg)
+    def _update_footer(self):
+        while self._footer_layout.count():
+            item = self._footer_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if not self._model or not self._students_data:
+            return
+        avgs = []
+        for stu in self._students_data:
+            sid = stu.get("id", 0)
+            vals = [v for v in self._model._data.get(sid, {}).values() if v is not None]
+            if vals:
+                avgs.append(round(sum(vals) / len(vals), 1))
+        if avgs:
+            prom = round(sum(avgs) / len(avgs), 1)
+            a = sum(1 for a in avgs if a >= 5.0)
+            s = len(avgs) - a
+            for text, color in [
+                (f"Promedio curso: {prom}", COLOR_TEXT),
+                (f"Aprobados: {a}", COLOR_SUCCESS),
+                (f"Suspensos: {s}", COLOR_DANGER),
+                (f"Media: {prom}", COLOR_TEXT_MUTED),
+            ]:
+                lbl = QLabel(text)
+                lbl.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: bold;")
+                self._footer_layout.addWidget(lbl)
 
     def _save_all(self):
-        course = self.course_combo.currentText()
-        if not course:
-            QMessageBox.warning(self, "Sin datos", "Selecciona un curso primero.")
+        if not self._model:
             return
-
-        saved = 0
-        errors = 0
-        n_rows = self.grades_table.rowCount()
-        n_cols = self.grades_table.columnCount()
-
-        for row in range(2, n_rows):
-            for col in range(2, n_cols):
-                item = self.grades_table.item(row, col)
-                if item is None:
-                    continue
-                meta = item.data(Qt.UserRole)
-                if not meta:
-                    continue
-                raw = item.text().strip()
-                if not raw:
-                    continue
-                try:
-                    score = float(raw)
-                    if score < MIN_SCORE or score > MAX_SCORE:
-                        continue
-                    upsert_grade(meta["student_id"], meta["subject_id"],
-                                 meta["period"], score)
-                    saved += 1
-                except ValueError:
-                    errors += 1
-
+        count = self._model.dirty_count()
+        self._model.save_dirty()
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Information)
         msg.setWindowTitle("Guardado")
-        text = f"{saved} notas guardadas."
-        if errors:
-            text += f" {errors} celdas ignoradas (valor inválido)."
-        msg.setText(text)
+        msg.setText(f"{count} notas guardadas." if count else "Sin cambios.")
         msg.exec()
         self.main.refresh_stats()
 
     def _export_dialog(self):
-        courses = get_distinct_courses()
+        courses = course_repo.all_distinct()
         if not courses:
-            QMessageBox.warning(self, "Sin datos", "No hay cursos disponibles.")
+            QMessageBox.warning(self, "Sin datos", "No hay cursos.")
             return
         dlg = ExportDialog(self, courses)
         if dlg.exec() != QDialog.Accepted or not dlg.result_data:
             return
         data = dlg.result_data
         mode = data.get("mode")
-
         try:
-            path = None
             from exporters.excel_exporter import (
-                export_grades_to_excel,
-                export_grades_by_course_and_trimester,
-                export_grades_by_student,
-                export_grades_summary_by_trimester,
+                export_grades_to_excel, export_grades_by_course_and_trimester,
+                export_grades_by_student, export_grades_summary_by_trimester,
             )
-
+            path = None
             if mode == "course_trimester":
                 path = export_grades_by_course_and_trimester(data["course"], data["period"])
             elif mode == "course_all":
@@ -406,23 +391,24 @@ class GradesView(QWidget):
                 path = export_grades_by_student(data["student_id"])
             elif mode == "summary":
                 path = export_grades_summary_by_trimester(data["period"])
-
             if path:
-                msg = QMessageBox()
-                msg.setIcon(QMessageBox.Information)
-                msg.setWindowTitle("Exportado")
-                msg.setText(f"Excel generado:\n{path}")
-                msg.exec()
+                QMessageBox.information(self, "Exportado", f"Excel generado:\n{path}")
             else:
-                QMessageBox.warning(self, "Sin datos", "No se encontraron datos para exportar.")
+                QMessageBox.warning(self, "Sin datos", "No se encontraron datos.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo exportar:\n{e}")
+
+    def show_student_panel(self, student_data):
+        self.student_panel.show_student(student_data)
+
+    def on_escape(self):
+        self._close_panel()
 
     def refresh(self):
         current_course = self.course_combo.currentText()
         self.course_combo.blockSignals(True)
         self.course_combo.clear()
-        courses = get_distinct_courses()
+        courses = course_repo.all_distinct()
         self.course_combo.addItems(courses)
         if current_course in courses:
             self.course_combo.setCurrentText(current_course)

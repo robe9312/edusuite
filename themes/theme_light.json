@@ -1,0 +1,20 @@
+{
+    "name": "Claro",
+    "accent_color": "#5E81F4",
+    "accent_hover_color": "#4a6cf7",
+    "sidebar_bg": "#f5f5f5",
+    "sidebar_hover": "#e8e8e8",
+    "sidebar_active": "#ffffff",
+    "border_color": "#d0d0d0",
+    "success_color": "#38D39F",
+    "warning_color": "#F5B942",
+    "danger_color": "#FF5A5F",
+    "main_bg": "#ffffff",
+    "surface_color": "#fafafa",
+    "panel_color": "#f0f0f0",
+    "input_color": "#ffffff",
+    "hover_color": "#e8e8e8",
+    "text_color": "#1a1a1a",
+    "text_muted": "#666666",
+    "text_dim": "#999999"
+}

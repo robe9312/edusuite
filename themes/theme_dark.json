@@ -1,0 +1,20 @@
+{
+    "name": "Oscuro",
+    "accent_color": "#5E81F4",
+    "accent_hover_color": "#4a6cf7",
+    "sidebar_bg": "#080808",
+    "sidebar_hover": "#141414",
+    "sidebar_active": "#1a1a1a",
+    "border_color": "#3a3a3a",
+    "success_color": "#38D39F",
+    "warning_color": "#F5B942",
+    "danger_color": "#FF5A5F",
+    "main_bg": "#080808",
+    "surface_color": "#0d0d0d",
+    "panel_color": "#151515",
+    "input_color": "#1a1a1a",
+    "hover_color": "#1e1e1e",
+    "text_color": "#ffffff",
+    "text_muted": "#aaaaaa",
+    "text_dim": "#777777"
+}

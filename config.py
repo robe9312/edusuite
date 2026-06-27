@@ -54,6 +54,48 @@ def score_bg(score):
     return "#0e170e"
 
 
+def lerp_color(c1, c2, t):
+    r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+    r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
+    r = int(r1 + (r2 - r1) * t)
+    g = int(g1 + (g2 - g1) * t)
+    b = int(b1 + (b2 - b1) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+HEATMAP_COLORS = [
+    ("#6B0F1A", 0.0),
+    ("#B71C1C", 0.15),
+    ("#E65100", 0.3),
+    ("#F9A825", 0.45),
+    ("#CDDC39", 0.55),
+    ("#66BB6A", 0.7),
+    ("#26A69A", 0.85),
+    ("#5E81F4", 1.0),
+]
+
+
+def heatmap_color(score):
+    if score is None:
+        return "transparent"
+    t = max(0.0, min(1.0, score / MAX_SCORE))
+    for i in range(len(HEATMAP_COLORS) - 1):
+        c1, t1 = HEATMAP_COLORS[i]
+        c2, t2 = HEATMAP_COLORS[i + 1]
+        if t1 <= t <= t2:
+            local_t = (t - t1) / (t2 - t1) if t2 != t1 else 0
+            return lerp_color(c1, c2, local_t)
+    return HEATMAP_COLORS[-1][0]
+
+
+def heatmap_text_color(score):
+    if score is None:
+        return COLOR_TEXT_MUTED
+    if score < 5.0:
+        return "#ffffff"
+    return "#000000"
+
+
 SUPABASE_URL = ""
 SUPABASE_KEY = ""
 
