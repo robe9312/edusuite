@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=0">
+<title>EduSuite Editor</title>
+<link rel="stylesheet" href="plugins/css/pluginsCss.css">
+<link rel="stylesheet" href="plugins/plugins.css">
+<link rel="stylesheet" href="css/luckysheet.css">
+<link rel="stylesheet" href="assets/iconfont/iconfont.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1c2e; }
+#luckysheet { width: 100%; height: calc(100% - 40px); }
+#savebar { height: 40px; background: #1e2030; display: flex; align-items: center; justify-content: center; gap: 12px; border-bottom: 1px solid #2a2d3e; }
+#savebar span { color: #8888aa; font-size: 13px; }
+#savebtn { padding: 6px 20px; border-radius: 6px; border: none; background: #22c55e; color: #fff; font-size: 13px; cursor: pointer; font-weight: 600; }
+#savebtn:hover { background: #16a34a; }
+#status { color: #8888aa; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="savebar">
+  <span>EduSuite Editor</span>
+  <button id="savebtn" onclick="saveSheet()">Guardar</button>
+  <span id="status"></span>
+</div>
+<div id="luckysheet"></div>
+<script src="plugins/js/plugin.js"></script>
+<script src="luckysheet.umd.min.js"></script>
+<script>
+var gridKey = 'ls-' + Date.now();
+
+function loadSheet(data) {
+    var opts = {
+        container: 'luckysheet',
+        title: data.name || 'Editor',
+        lang: 'es',
+        showinfobar: true,
+        showsheetbar: true,
+        showtoolbar: true,
+        enableAddRow: true,
+        gridKey: gridKey,
+        column: 26,
+        row: 100,
+        cellEditAhead: false,
+        allowUpdate: true,
+        myFolderUrl: null
+    };
+    if (data.sheetData && data.sheetData.length > 0) {
+        opts.data = data.sheetData;
+    }
+    luckysheet.create(opts);
+}
+
+function saveSheet() {
+    setStatus('Guardando...');
+    try {
+        var file = luckysheet.getLuckysheetFile();
+        var payload = JSON.stringify({
+            gridKey: file.gridKey,
+            name: file.title || 'Editor',
+            sheetData: file.data
+        });
+        fetch('/save', {
+            method: 'POST',
+            body: payload
+        }).then(function(r) {
+            return r.json();
+        }).then(function(d) {
+            setStatus('Guardado exitoso!');
+        }).catch(function(e) {
+            setStatus('Error: ' + e.message);
+        });
+    } catch(e) {
+        setStatus('Error: ' + e.message);
+    }
+}
+
+function setStatus(msg) {
+    document.getElementById('status').textContent = msg;
+    setTimeout(function() { setStatus(''); }, 3000);
+}
+
+fetch('/data').then(function(r) { return r.json(); }).then(function(d) {
+    loadSheet(d);
+}).catch(function(e) {
+    document.getElementById('savebar').innerHTML = '<span style="color:#ef4444;">Error al cargar datos: ' + e.message + '</span>';
+});
+</script>
+</body>
+</html>

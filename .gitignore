@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.xlsx
+settings.json
+.DS_Store

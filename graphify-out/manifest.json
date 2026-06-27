@@ -1,0 +1,187 @@
+{
+  "/home/rohdinn/EduSuite/PySide6/__init__.py": {
+    "mtime": 1782468482.2194803,
+    "ast_hash": "c453eb8aab517ace9ce1bee0bb5b4ac5",
+    "semantic_hash": "c453eb8aab517ace9ce1bee0bb5b4ac5"
+  },
+  "/home/rohdinn/EduSuite/assets/luckysheet/luckysheet.umd.min.js": {
+    "mtime": 1782467606.9566717,
+    "ast_hash": "22b18d9f4a3370e64056db68c494cb76",
+    "semantic_hash": "22b18d9f4a3370e64056db68c494cb76"
+  },
+  "/home/rohdinn/EduSuite/assets/luckysheet/plugins/js/plugin.js": {
+    "mtime": 1782467946.7803247,
+    "ast_hash": "5054c3449bbee7fbc4e7803a8498e6fe",
+    "semantic_hash": "5054c3449bbee7fbc4e7803a8498e6fe"
+  },
+  "/home/rohdinn/EduSuite/backup/backup_manager.py": {
+    "mtime": 1782464994.0829484,
+    "ast_hash": "a01e6cb0d8feb24049713b8500d7c9de",
+    "semantic_hash": "a01e6cb0d8feb24049713b8500d7c9de"
+  },
+  "/home/rohdinn/EduSuite/config.py": {
+    "mtime": 1782544569.5400443,
+    "ast_hash": "f7ddfb10f1592321cf41b5e6e26395e3",
+    "semantic_hash": "f7ddfb10f1592321cf41b5e6e26395e3"
+  },
+  "/home/rohdinn/EduSuite/db/database.py": {
+    "mtime": 1782553239.0962818,
+    "ast_hash": "82310c2de8e49ec51dcac5c6a6fd297c",
+    "semantic_hash": "82310c2de8e49ec51dcac5c6a6fd297c"
+  },
+  "/home/rohdinn/EduSuite/edusuite.sh": {
+    "mtime": 1782464999.7055862,
+    "ast_hash": "e0c0fc270d0020bfec4d6ae15c3dd300",
+    "semantic_hash": "e0c0fc270d0020bfec4d6ae15c3dd300"
+  },
+  "/home/rohdinn/EduSuite/exporters/excel_exporter.py": {
+    "mtime": 1782553614.434602,
+    "ast_hash": "023d5bad0f458c88f93f3e1fc7859115",
+    "semantic_hash": "023d5bad0f458c88f93f3e1fc7859115"
+  },
+  "/home/rohdinn/EduSuite/exporters/excel_importer.py": {
+    "mtime": 1782553711.7114625,
+    "ast_hash": "533008eebfd69019bc4affb8c18f3ac3",
+    "semantic_hash": "533008eebfd69019bc4affb8c18f3ac3"
+  },
+  "/home/rohdinn/EduSuite/main.py": {
+    "mtime": 1782545045.7772238,
+    "ast_hash": "93abffe3dbfbf72af1918b113f2a5173",
+    "semantic_hash": "93abffe3dbfbf72af1918b113f2a5173"
+  },
+  "/home/rohdinn/EduSuite/session.py": {
+    "mtime": 1782544956.0659966,
+    "ast_hash": "b14bcddd0683ccc6ce64e3affaefbb9d",
+    "semantic_hash": "b14bcddd0683ccc6ce64e3affaefbb9d"
+  },
+  "/home/rohdinn/EduSuite/ui_style.py": {
+    "mtime": 1782544625.137553,
+    "ast_hash": "511b1fdf7b71361ef4b926b19f23ffdb",
+    "semantic_hash": "511b1fdf7b71361ef4b926b19f23ffdb"
+  },
+  "/home/rohdinn/EduSuite/views/backup_view.py": {
+    "mtime": 1782544163.3935976,
+    "ast_hash": "aa6652337e0eada06f8158467ca6b642",
+    "semantic_hash": "aa6652337e0eada06f8158467ca6b642"
+  },
+  "/home/rohdinn/EduSuite/views/dashboard_view.py": {
+    "mtime": 1782544635.4176471,
+    "ast_hash": "05900b0f1ece9b409136668b25c45d76",
+    "semantic_hash": "05900b0f1ece9b409136668b25c45d76"
+  },
+  "/home/rohdinn/EduSuite/views/editor_view.py": {
+    "mtime": 1782553434.45501,
+    "ast_hash": "5529546c6ddf543e1748bb4824286834",
+    "semantic_hash": "5529546c6ddf543e1748bb4824286834"
+  },
+  "/home/rohdinn/EduSuite/views/enrollment_view.py": {
+    "mtime": 1782552113.8333275,
+    "ast_hash": "c451410ba054fef6604ed18ee0faa629",
+    "semantic_hash": "c451410ba054fef6604ed18ee0faa629"
+  },
+  "/home/rohdinn/EduSuite/views/grades_view.py": {
+    "mtime": 1782553385.0515728,
+    "ast_hash": "fa15f969e61c61d103eda629b53ac242",
+    "semantic_hash": "fa15f969e61c61d103eda629b53ac242"
+  },
+  "/home/rohdinn/EduSuite/views/login_dialog.py": {
+    "mtime": 1782544964.779116,
+    "ast_hash": "fdddaf67f040451c00e4635673ce5231",
+    "semantic_hash": "fdddaf67f040451c00e4635673ce5231"
+  },
+  "/home/rohdinn/EduSuite/views/main_window.py": {
+    "mtime": 1782545275.4020586,
+    "ast_hash": "4f0f2b8cbb8b29878a1a1b850a815528",
+    "semantic_hash": "4f0f2b8cbb8b29878a1a1b850a815528"
+  },
+  "/home/rohdinn/EduSuite/views/settings_view.py": {
+    "mtime": 1782548073.1868248,
+    "ast_hash": "a506f1ea7bba254f3824770985d84af5",
+    "semantic_hash": "a506f1ea7bba254f3824770985d84af5"
+  },
+  "/home/rohdinn/EduSuite/views/students_view.py": {
+    "mtime": 1782553349.2892566,
+    "ast_hash": "aa3c6df209f9af676a5e79699b3512d8",
+    "semantic_hash": "aa3c6df209f9af676a5e79699b3512d8"
+  },
+  "/home/rohdinn/EduSuite/views/subjects_view.py": {
+    "mtime": 1782544102.4880612,
+    "ast_hash": "79f6b9bceaa20165e63f35e2a8f0356a",
+    "semantic_hash": "79f6b9bceaa20165e63f35e2a8f0356a"
+  },
+  "/home/rohdinn/EduSuite/views/teachers_view.py": {
+    "mtime": 1782544076.2778304,
+    "ast_hash": "04928e2ead4a419df54c168c9b049e8e",
+    "semantic_hash": "04928e2ead4a419df54c168c9b049e8e"
+  },
+  "/home/rohdinn/EduSuite/.anchor-summary.md": {
+    "mtime": 1782543580.8757844,
+    "ast_hash": "bbd459f918b215f3abe27169d1f1f312",
+    "semantic_hash": "bbd459f918b215f3abe27169d1f1f312"
+  },
+  "/home/rohdinn/EduSuite/assets/luckysheet/index.html": {
+    "mtime": 1782468105.406556,
+    "ast_hash": "f4226ac847a822008b4240643d304ca2",
+    "semantic_hash": "f4226ac847a822008b4240643d304ca2"
+  },
+  "/home/rohdinn/EduSuite/assets/luckysheet/standalone.html": {
+    "mtime": 1782515119.1147215,
+    "ast_hash": "494d1fe0634c8090b047bc45c2e2d43c",
+    "semantic_hash": "494d1fe0634c8090b047bc45c2e2d43c"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/deudores_2024-2025_2026-06-26_09-32-34_803bc075.md": {
+    "mtime": 1782554020.1612122,
+    "ast_hash": "20e7cecaad325b7c1159cbb9e2ebdf7f",
+    "semantic_hash": "20e7cecaad325b7c1159cbb9e2ebdf7f"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/estudiantes_1_2026-06-26_08-16-04_e96c2bd8.md": {
+    "mtime": 1782554020.1733243,
+    "ast_hash": "b7e566c8c324eee81972ef98cdbda3c5",
+    "semantic_hash": "b7e566c8c324eee81972ef98cdbda3c5"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/estudiantes_1_2026-06-26_08-47-07_bcc82438.md": {
+    "mtime": 1782554020.1895366,
+    "ast_hash": "d0777e7be0543e15a8c8fb782e5614aa",
+    "semantic_hash": "d0777e7be0543e15a8c8fb782e5614aa"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/matricula_2024-2025_2026-06-26_09-32-34_f978561a.md": {
+    "mtime": 1782554020.1981814,
+    "ast_hash": "47e8a2eb641e07ab33147c5c921fe41d",
+    "semantic_hash": "47e8a2eb641e07ab33147c5c921fe41d"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-26_08-16-04_a6a59185.md": {
+    "mtime": 1782554020.2098315,
+    "ast_hash": "699ea39179f252e4b92b1d4a8fc1f69b",
+    "semantic_hash": "699ea39179f252e4b92b1d4a8fc1f69b"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-26_08-28-22_aa478498.md": {
+    "mtime": 1782554020.2195783,
+    "ast_hash": "af8ebeedcf39347be27a836ac7231c87",
+    "semantic_hash": "af8ebeedcf39347be27a836ac7231c87"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-26_08-47-07_1ae4793f.md": {
+    "mtime": 1782554020.230989,
+    "ast_hash": "8502eb674592d4f60277a02d66c17a0d",
+    "semantic_hash": "8502eb674592d4f60277a02d66c17a0d"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-27_09-41-01_e765fd3b.md": {
+    "mtime": 1782554020.2394564,
+    "ast_hash": "7a4afff27cea3ab42dfab4a28f4b406f",
+    "semantic_hash": "7a4afff27cea3ab42dfab4a28f4b406f"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-27_09-41-08_2cfd4075.md": {
+    "mtime": 1782554020.2505083,
+    "ast_hash": "9190c4f4e38b35a03de7b63918d51400",
+    "semantic_hash": "9190c4f4e38b35a03de7b63918d51400"
+  },
+  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-27_09-41-50_6ce64d91.md": {
+    "mtime": 1782554020.2579892,
+    "ast_hash": "803ddea7b3f662cc58b6f86560a86c3c",
+    "semantic_hash": "803ddea7b3f662cc58b6f86560a86c3c"
+  },
+  "/home/rohdinn/EduSuite/requirements.txt": {
+    "mtime": 1782464994.0834193,
+    "ast_hash": "8274996e5bdb261b406096f056e1bde7",
+    "semantic_hash": "8274996e5bdb261b406096f056e1bde7"
+  }
+}
