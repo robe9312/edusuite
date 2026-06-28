@@ -89,6 +89,8 @@ class Database:
         self._seed_subjects()
         self._seed_roles()
         self._seed_admin()
+        self._seed_document_categories()
+        self._migrate_documents()
 
     def _migrate_students(self, conn):
         conn.execute("PRAGMA foreign_keys=OFF")
@@ -294,7 +296,8 @@ class Database:
                 component_id INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
                 role_id     INTEGER NOT NULL REFERENCES roles(id),
                 can_view    INTEGER NOT NULL DEFAULT 0,
-                can_edit    INTEGER NOT NULL DEFAULT 0,
+                can_edit    INTEGER NOT NULL DEFAULT 0
+            );
 
             CREATE TABLE IF NOT EXISTS meta_projects (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -335,7 +338,69 @@ class Database:
 
             CREATE TRIGGER IF NOT EXISTS trg_custom_sections_updated AFTER UPDATE ON custom_sections FOR EACH ROW BEGIN UPDATE custom_sections SET updated_at = datetime('now') WHERE id = OLD.id; END;
             CREATE TRIGGER IF NOT EXISTS trg_custom_data_updated AFTER UPDATE ON custom_section_data FOR EACH ROW BEGIN UPDATE custom_section_data SET updated_at = datetime('now') WHERE id = OLD.id; END;
+
+            -- Document management tables
+            CREATE TABLE IF NOT EXISTS document_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                icon TEXT DEFAULT '\U0001f4c4',
+                color TEXT DEFAULT '#6b7280',
+                sort_order INTEGER DEFAULT 0,
+                is_system INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                category_id INTEGER REFERENCES document_categories(id),
+                template_id INTEGER REFERENCES documents(id),
+                description TEXT DEFAULT '',
+                icon TEXT DEFAULT '\U0001f4c4',
+                color TEXT DEFAULT '#5e81f4',
+                school_year TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now','localtime')),
+                updated_at TEXT DEFAULT (datetime('now','localtime')),
+                settings_json TEXT DEFAULT '{}',
+                is_archived INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS document_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                version INTEGER NOT NULL,
+                workbook_json TEXT,
+                comment TEXT DEFAULT '',
+                created_by TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS document_instances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                school_year TEXT DEFAULT '',
+                course_id TEXT DEFAULT '',
+                teacher_id TEXT DEFAULT '',
+                status TEXT DEFAULT 'active',
+                current_version INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS document_metadata (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                key TEXT NOT NULL,
+                value TEXT DEFAULT ''
+            );
+
+            CREATE TRIGGER IF NOT EXISTS trg_documents_updated
+                AFTER UPDATE ON documents FOR EACH ROW
+            BEGIN
+                UPDATE documents SET updated_at = datetime('now','localtime') WHERE id = OLD.id;
+            END;
 '''
+        try:
+            conn.executescript(sql)
+        except Exception:
+            pass
         # ── Migration: add new columns if they don't exist ───────────────────────
         try:
             conn.execute("ALTER TABLE expenses ADD COLUMN categoria TEXT")
@@ -393,6 +458,51 @@ class Database:
             conn.execute("ALTER TABLE custom_sections ADD COLUMN settings_json TEXT DEFAULT '{}'")
         except Exception:
             pass
+
+        # ── Document management tables ─────────────────────────────────────
+        for ddl in [
+            "CREATE TABLE IF NOT EXISTS document_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, icon TEXT DEFAULT '\U0001f4c4', color TEXT DEFAULT '#6b7280', sort_order INTEGER DEFAULT 0, is_system INTEGER DEFAULT 0)",
+            "CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, category_id INTEGER REFERENCES document_categories(id), template_id INTEGER REFERENCES documents(id), description TEXT DEFAULT '', icon TEXT DEFAULT '\U0001f4c4', color TEXT DEFAULT '#5e81f4', school_year TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')), settings_json TEXT DEFAULT '{}', is_archived INTEGER DEFAULT 0)",
+            "CREATE TABLE IF NOT EXISTS document_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, document_id INTEGER NOT NULL REFERENCES documents(id), version INTEGER NOT NULL, workbook_json TEXT, comment TEXT DEFAULT '', created_by TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now','localtime')))",
+            "CREATE TABLE IF NOT EXISTS document_instances (id INTEGER PRIMARY KEY AUTOINCREMENT, document_id INTEGER NOT NULL REFERENCES documents(id), school_year TEXT DEFAULT '', course_id TEXT DEFAULT '', teacher_id TEXT DEFAULT '', status TEXT DEFAULT 'active', current_version INTEGER DEFAULT 0)",
+            "CREATE TABLE IF NOT EXISTS document_metadata (id INTEGER PRIMARY KEY AUTOINCREMENT, document_id INTEGER NOT NULL REFERENCES documents(id), key TEXT NOT NULL, value TEXT DEFAULT '')",
+        ]:
+            try:
+                conn.execute(ddl)
+            except Exception:
+                pass
+        try:
+            conn.execute("CREATE TRIGGER IF NOT EXISTS trg_documents_updated AFTER UPDATE ON documents FOR EACH ROW BEGIN UPDATE documents SET updated_at = datetime('now','localtime') WHERE id = OLD.id; END")
+        except Exception:
+            pass
+
+        # ── Migration: ensure columns exist (safe for existing DBs) ────────
+        def _ensure_col(table, col, ddl):
+            existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if col not in existing:
+                try:
+                    conn.execute(ddl)
+                except Exception:
+                    pass
+
+        _ensure_col("documents", "created_at",
+            "ALTER TABLE documents ADD COLUMN created_at TEXT DEFAULT (datetime('now','localtime'))")
+        _ensure_col("documents", "updated_at",
+            "ALTER TABLE documents ADD COLUMN updated_at TEXT DEFAULT (datetime('now','localtime'))")
+        _ensure_col("documents", "settings_json",
+            "ALTER TABLE documents ADD COLUMN settings_json TEXT DEFAULT '{}'")
+        _ensure_col("documents", "is_archived",
+            "ALTER TABLE documents ADD COLUMN is_archived INTEGER DEFAULT 0")
+        _ensure_col("document_versions", "created_at",
+            "ALTER TABLE document_versions ADD COLUMN created_at TEXT DEFAULT (datetime('now','localtime'))")
+        _ensure_col("custom_sections", "created_at",
+            "ALTER TABLE custom_sections ADD COLUMN created_at TEXT DEFAULT (datetime('now'))")
+        _ensure_col("custom_sections", "updated_at",
+            "ALTER TABLE custom_sections ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
+        _ensure_col("custom_sections", "workbook_json",
+            "ALTER TABLE custom_sections ADD COLUMN workbook_json TEXT")
+        _ensure_col("custom_sections", "settings_json",
+            "ALTER TABLE custom_sections ADD COLUMN settings_json TEXT DEFAULT '{}'")
 
     def _row(self, row):
         return dict(row) if row else None
@@ -1144,6 +1254,118 @@ class Database:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_dashboard_extended(self):
+        with self._connect() as conn:
+            stats = self.get_stats()
+            courses = self.get_stats_by_curso()
+            distinct = self.get_distinct_courses()
+
+            total_students = stats["students"]
+            total_grades = conn.execute("SELECT COUNT(*) FROM grades").fetchone()[0]
+
+            evaluated = conn.execute(
+                """SELECT COUNT(DISTINCT student_id) FROM grades"""
+            ).fetchone()[0]
+
+            approved = conn.execute(
+                """SELECT COUNT(DISTINCT g.student_id) FROM grades g
+                   JOIN (SELECT student_id, AVG(score) as avg_score
+                         FROM grades GROUP BY student_id) a
+                   ON a.student_id = g.student_id
+                   WHERE a.avg_score >= 5"""
+            ).fetchone()[0]
+
+            failed = total_students - approved if total_students > approved else 0
+
+            pass_rate = round(approved / evaluated * 100, 1) if evaluated else 0
+
+            # Per-course stats
+            course_stats = []
+            for c in distinct:
+                enrolled = conn.execute(
+                    "SELECT COUNT(*) FROM students WHERE active=1 AND curso=?", (c,)
+                ).fetchone()[0]
+                eval_count = conn.execute(
+                    "SELECT COUNT(DISTINCT s.id) FROM students s JOIN grades g ON g.student_id=s.id WHERE s.curso=?",
+                    (c,),
+                ).fetchone()[0]
+                aprob = conn.execute(
+                    """SELECT COUNT(DISTINCT g.student_id) FROM grades g
+                       JOIN students s ON s.id=g.student_id
+                       WHERE s.curso=? AND s.active=1
+                       GROUP BY g.student_id
+                       HAVING AVG(g.score) >= 5""",
+                    (c,),
+                ).fetchone()[0] or 0
+                susp = eval_count - aprob if eval_count > aprob else 0
+                course_stats.append({
+                    "curso": c, "enrolled": enrolled,
+                    "evaluated": eval_count,
+                    "approved": aprob, "failed": susp,
+                })
+
+            # Per-subject fail stats for alerts
+            subject_fails = [dict(r) for r in conn.execute(
+                """SELECT sub.name, sub.grade_level,
+                          COUNT(g.id) as total,
+                          SUM(CASE WHEN g.score < 5 THEN 1 ELSE 0 END) as fails,
+                          ROUND(AVG(g.score), 2) as avg_score
+                   FROM grades g
+                   JOIN subjects sub ON sub.id = g.subject_id
+                   GROUP BY sub.id
+                   ORDER BY fails DESC"""
+            ).fetchall()]
+
+            # Evolution across trimesters
+            evolution = {}
+            for p in ("T1", "T2", "T3"):
+                row = conn.execute(
+                    """SELECT COUNT(g.id) as total,
+                              SUM(CASE WHEN g.score >= 5 THEN 1 ELSE 0 END) as approved,
+                              ROUND(AVG(g.score), 2) as avg_score
+                       FROM grades g WHERE g.period=?""",
+                    (p,),
+                ).fetchone()
+                if row and row["total"]:
+                    evolution[p] = dict(row)
+                else:
+                    evolution[p] = {"total": 0, "approved": 0, "avg_score": 0.0}
+
+        return {
+            "total_students": total_students,
+            "total_grades": total_grades,
+            "evaluated": evaluated,
+            "approved": approved,
+            "failed": failed,
+            "pass_rate": pass_rate,
+            "courses": course_stats,
+            "subject_fails": subject_fails,
+            "evolution": evolution,
+            "base": stats,
+        }
+
+    def get_recent_activity(self, limit=10):
+        with self._connect() as conn:
+            grades = [dict(r) for r in conn.execute(
+                """SELECT 'grade' as type, g.updated_at as ts, s.nombre as student,
+                          sub.name as subject, g.period, g.score
+                   FROM grades g
+                   JOIN students s ON s.id=g.student_id
+                   JOIN subjects sub ON sub.id=g.subject_id
+                   WHERE g.updated_at IS NOT NULL
+                   ORDER BY g.updated_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()]
+            if len(grades) < limit:
+                enrollments = [dict(r) for r in conn.execute(
+                    """SELECT 'enrollment' as type, created_at as ts, nombre as student, curso
+                       FROM students WHERE active=1 AND created_at IS NOT NULL
+                       ORDER BY created_at DESC LIMIT ?""",
+                    (limit - len(grades),),
+                ).fetchall()]
+                grades.extend(enrollments)
+            return grades[:limit]
+
     def get_distinct_courses(self):
         with self._connect() as conn:
             rows = conn.execute(
@@ -1357,6 +1579,202 @@ class Database:
     def delete_custom_section_row(self, row_id):
         with self._connect() as conn:
             conn.execute("DELETE FROM custom_section_data WHERE id = ?", (row_id,))
+
+
+    # ── Document Categories ───────────────────────────────────────────────
+
+    def _seed_document_categories(self):
+        categories = [
+            ("GradeBook", "\U0001f4d8", "#3b82f6", 1, 1),
+            ("Attendance", "\U0001f4cb", "#8b5cf6", 2, 1),
+            ("Schedule", "\U0001f4c5", "#10b981", 3, 1),
+            ("Inventory", "\U0001f4e6", "#f59e0b", 4, 1),
+            ("Template", "\U0001f4c4", "#6b7280", 5, 1),
+            ("Document", "\U0001f4c4", "#6b7280", 6, 1),
+        ]
+        with self._connect() as conn:
+            for name, icon, color, order, system in categories:
+                conn.execute(
+                    "INSERT OR IGNORE INTO document_categories (name, icon, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?)",
+                    (name, icon, color, order, system),
+                )
+
+    def _migrate_documents(self):
+        with self._connect() as conn:
+            migrated = conn.execute("SELECT 1 FROM documents LIMIT 1").fetchone()
+            if migrated:
+                return
+            sections = [dict(r) for r in conn.execute("SELECT * FROM custom_sections").fetchall()]
+            if not sections:
+                return
+            default_cat = conn.execute(
+                "SELECT id FROM document_categories WHERE name = 'Document'"
+            ).fetchone()
+            doc_cat_id = default_cat["id"] if default_cat else 1
+            for sec in sections:
+                name_lower = (sec.get("name") or "").lower()
+                cat_guess = "Document"
+                if any(k in name_lower for k in ("asist", "attendance")):
+                    cat_guess = "Attendance"
+                elif any(k in name_lower for k in ("horar", "schedule")):
+                    cat_guess = "Schedule"
+                elif any(k in name_lower for k in ("invent", "inventory")):
+                    cat_guess = "Inventory"
+                elif any(k in name_lower for k in ("nota", "grade", "boletin", "report")):
+                    cat_guess = "GradeBook"
+                cat = conn.execute(
+                    "SELECT id FROM document_categories WHERE name = ?", (cat_guess,)
+                ).fetchone()
+                cat_id = cat["id"] if cat else doc_cat_id
+                cur = conn.execute(
+                    """INSERT INTO documents (name, category_id, description, icon, color, settings_json)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (sec.get("name",""), cat_id, sec.get("description",""), sec.get("icon","\U0001f4c4"), sec.get("color","#5e81f4"), sec.get("settings_json","{}")),
+                )
+                doc_id = cur.lastrowid
+                wb = sec.get("workbook_json")
+                if wb:
+                    conn.execute(
+                        "INSERT INTO document_versions (document_id, version, workbook_json, comment) VALUES (?, 1, ?, 'Migrated')",
+                        (doc_id, wb),
+                    )
+                    conn.execute(
+                        "INSERT INTO document_instances (document_id, current_version) VALUES (?, 1)", (doc_id,),
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO document_instances (document_id, current_version) VALUES (?, 0)", (doc_id,),
+                    )
+
+    # ── CRUD: Documentos ──────────────────────────────────────────────────
+
+    def create_document(self, name, category_id=6, description="", icon="\U0001f4c4", color="#5e81f4", school_year="", settings_json="{}"):
+        with self._connect() as conn:
+            cur = conn.execute(
+                """INSERT INTO documents (name, category_id, description, icon, color, school_year, settings_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (name, category_id, description, icon, color, school_year, settings_json),
+            )
+            doc_id = cur.lastrowid
+            conn.execute(
+                "INSERT INTO document_instances (document_id, current_version) VALUES (?, 0)", (doc_id,),
+            )
+            return doc_id
+
+    def get_document(self, doc_id):
+        with self._connect() as conn:
+            row = conn.execute("SELECT d.*, dc.name AS category_name, dc.icon AS category_icon FROM documents d LEFT JOIN document_categories dc ON dc.id = d.category_id WHERE d.id = ?", (doc_id,)).fetchone()
+            return dict(row) if row else None
+
+    def get_all_documents(self, category_id=None, school_year=None, archived=False, search=None):
+        with self._connect() as conn:
+            sql = "SELECT d.*, dc.name AS category_name, dc.icon AS category_icon FROM documents d LEFT JOIN document_categories dc ON dc.id = d.category_id WHERE d.is_archived = ?"
+            params = [1 if archived else 0]
+            if category_id:
+                sql += " AND d.category_id = ?"
+                params.append(category_id)
+            if school_year:
+                sql += " AND d.school_year = ?"
+                params.append(school_year)
+            if search:
+                sql += " AND d.name LIKE ?"
+                params.append(f"%{search}%")
+            sql += " ORDER BY d.updated_at DESC"
+            return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+    def update_document(self, doc_id, **kwargs):
+        allowed = ["name", "category_id", "description", "icon", "color", "school_year", "settings_json", "is_archived"]
+        fields = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
+        if not fields:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        vals = list(fields.values()) + [doc_id]
+        with self._connect() as conn:
+            conn.execute(f"UPDATE documents SET {set_clause} WHERE id = ?", vals)
+
+    def delete_document(self, doc_id):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM document_metadata WHERE document_id = ?", (doc_id,))
+            conn.execute("DELETE FROM document_instances WHERE document_id = ?", (doc_id,))
+            conn.execute("DELETE FROM document_versions WHERE document_id = ?", (doc_id,))
+            conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+
+    def archive_document(self, doc_id):
+        self.update_document(doc_id, is_archived=1)
+
+    def restore_document(self, doc_id):
+        self.update_document(doc_id, is_archived=0)
+
+    def save_document_version(self, doc_id, workbook_json, comment="", created_by=""):
+        with self._connect() as conn:
+            max_ver = conn.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM document_versions WHERE document_id = ?",
+                (doc_id,),
+            ).fetchone()[0]
+            cur = conn.execute(
+                "INSERT INTO document_versions (document_id, version, workbook_json, comment, created_by) VALUES (?, ?, ?, ?, ?)",
+                (doc_id, max_ver, workbook_json, comment, created_by),
+            )
+            conn.execute(
+                "UPDATE document_instances SET current_version = ? WHERE document_id = ?",
+                (max_ver, doc_id),
+            )
+            return cur.lastrowid
+
+    def get_document_versions(self, doc_id):
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM document_versions WHERE document_id = ? ORDER BY version DESC",
+                (doc_id,),
+            ).fetchall()]
+
+    def get_document_version(self, version_id):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM document_versions WHERE id = ?", (version_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_latest_workbook(self, doc_id):
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT v.* FROM document_versions v
+                   JOIN document_instances i ON i.document_id = v.document_id
+                   WHERE v.document_id = ? AND v.version = i.current_version
+                   LIMIT 1""",
+                (doc_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def duplicate_document(self, doc_id, new_name=None):
+        doc = self.get_document(doc_id)
+        if not doc:
+            return None
+        name = new_name or f"{doc['name']} (Copia)"
+        new_id = self.create_document(
+            name=name,
+            category_id=doc["category_id"],
+            description=doc.get("description", ""),
+            icon=doc.get("icon", "\U0001f4c4"),
+            color=doc.get("color", "#5e81f4"),
+            school_year=doc.get("school_year", ""),
+        )
+        wb = self.get_latest_workbook(doc_id)
+        if wb and wb.get("workbook_json"):
+            self.save_document_version(new_id, wb["workbook_json"], comment="Duplicado")
+        return new_id
+
+    def get_document_categories(self):
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM document_categories ORDER BY sort_order"
+            ).fetchall()]
+
+    def get_document_instances(self, doc_id):
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM document_instances WHERE document_id = ?", (doc_id,)
+            ).fetchall()]
 
 
 # ── Singleton ──────────────────────────────────────────────────────────
@@ -1668,6 +2086,14 @@ def get_distinct_courses():
     return _db.get_distinct_courses()
 
 
+def get_dashboard_extended():
+    return _db.get_dashboard_extended()
+
+
+def get_recent_activity(limit=10):
+    return _db.get_recent_activity(limit)
+
+
 def export_all_to_dict():
     return _db.export_all_to_dict()
 
@@ -1783,3 +2209,48 @@ def update_custom_section_row(row_id, row_data_json):
 
 def delete_custom_section_row(row_id):
     return _db.delete_custom_section_row(row_id)
+
+
+# ── CRUD: Documentos ──────────────────────────────────────────────────────
+
+def create_document(name, category_id=6, description="", icon="\U0001f4c4", color="#5e81f4", school_year="", settings_json="{}"):
+    return _db.create_document(name, category_id, description, icon, color, school_year, settings_json)
+
+def get_document(doc_id):
+    return _db.get_document(doc_id)
+
+def get_all_documents(category_id=None, school_year=None, archived=False, search=None):
+    return _db.get_all_documents(category_id, school_year, archived, search)
+
+def update_document(doc_id, **kwargs):
+    return _db.update_document(doc_id, **kwargs)
+
+def delete_document(doc_id):
+    return _db.delete_document(doc_id)
+
+def archive_document(doc_id):
+    return _db.archive_document(doc_id)
+
+def restore_document(doc_id):
+    return _db.restore_document(doc_id)
+
+def save_document_version(doc_id, workbook_json, comment="", created_by=""):
+    return _db.save_document_version(doc_id, workbook_json, comment, created_by)
+
+def get_document_versions(doc_id):
+    return _db.get_document_versions(doc_id)
+
+def get_document_version(version_id):
+    return _db.get_document_version(version_id)
+
+def get_latest_workbook(doc_id):
+    return _db.get_latest_workbook(doc_id)
+
+def duplicate_document(doc_id, new_name=None):
+    return _db.duplicate_document(doc_id, new_name)
+
+def get_document_categories():
+    return _db.get_document_categories()
+
+def get_document_instances(doc_id):
+    return _db.get_document_instances(doc_id)

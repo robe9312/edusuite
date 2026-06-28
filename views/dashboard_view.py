@@ -1,156 +1,235 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea,
+    QPushButton, QFrame, QMenu, QAction, QGridLayout, QMessageBox,
+)
 from PySide6.QtCore import Qt
 
-from db.database import get_stats, get_db_path
 from config import *
-from widgets.card import StatCard
-
-
-class ProgressBar(QFrame):
-    def __init__(self, label, value, max_val, color=COLOR_ACCENT):
-        super().__init__()
-        self.setFixedHeight(36)
-        self._value = value
-        self._max = max_val if max_val > 0 else 1
-        self._color = color
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-
-        lbl = QLabel(label)
-        lbl.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: 11px;")
-        lbl.setFixedWidth(100)
-        layout.addWidget(lbl)
-
-        bar_bg = QFrame()
-        bar_bg.setFixedHeight(8)
-        bar_bg.setStyleSheet(f"background: {COLOR_INPUT}; border-radius: 4px;")
-        bg_layout = QVBoxLayout(bar_bg)
-        bg_layout.setContentsMargins(0, 0, 0, 0)
-
-        pct = min(self._value / self._max, 1.0)
-        fill = QFrame()
-        fill.setFixedWidth(int(200 * pct))
-        fill.setFixedHeight(8)
-        fill.setStyleSheet(f"background: {self._color}; border-radius: 4px;")
-        bg_layout.addWidget(fill)
-        layout.addWidget(bar_bg, 1)
-
-        val_lbl = QLabel(str(value))
-        val_lbl.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 12px;")
-        val_lbl.setFixedWidth(40)
-        layout.addWidget(val_lbl)
+from services import ServiceRegistry
+from widgets.dashboard import (
+    KpiCardsWidget, CourseSummaryWidget, HeatmapWidget,
+    AlertsWidget, ActivityFeedWidget, QuickActionsWidget,
+    EvolutionWidget, DocumentsWidget,
+)
 
 
 class DashboardView(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
-        self._build()
+        self._stats = ServiceRegistry.instance().statistics()
+        self._widgets = {}
+        self._widget_layout = {}
 
-    def _build(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 32, 32, 32)
-        layout.setSpacing(20)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        header = QLabel("Dashboard")
-        header.setStyleSheet(f"font-size: 20px; font-weight: 600; color: {COLOR_TEXT};")
-        layout.addWidget(header)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet(f"background: transparent;")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        cards = QHBoxLayout()
-        cards.setSpacing(16)
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        self._root = QVBoxLayout(container)
+        self._root.setContentsMargins(32, 28, 32, 28)
+        self._root.setSpacing(0)
 
-        self.student_card = StatCard("—", "Estudiantes", "Matriculados", COLOR_ACCENT)
-        cards.addWidget(self.student_card)
+        self._build_header()
+        self._build_widgets()
+        self._root.addStretch()
 
-        self.teacher_card = StatCard("—", "Docentes", "Activos", "#5E81F4")
-        cards.addWidget(self.teacher_card)
+        scroll.setWidget(container)
+        layout.addWidget(scroll)
 
-        self.pass_card = StatCard("—", "Aprobados", "Global", COLOR_SUCCESS)
-        cards.addWidget(self.pass_card)
+        self._load_settings()
 
-        self.avg_card = StatCard("—", "Promedio", "General", "#F5B942")
-        cards.addWidget(self.avg_card)
+    def _build_header(self):
+        hdr = QFrame()
+        hl = QHBoxLayout(hdr)
+        hl.setContentsMargins(0, 0, 0, 20)
 
-        layout.addLayout(cards)
+        title = QLabel("Dashboard")
+        title.setStyleSheet(f"font-size: 22px; font-weight: 700; color: {COLOR_TEXT};")
+        hl.addWidget(title)
 
-        grid = QHBoxLayout()
+        hl.addStretch()
+
+        year = QLabel("Curso 2025-2026")
+        year.setStyleSheet(f"""
+            color: {COLOR_TEXT_DIM}; font-size: 12px;
+            padding: 4px 12px;
+            border: 1px solid {COLOR_BORDER};
+        """)
+        hl.addWidget(year)
+
+        self._gear_btn = QPushButton("⚙")
+        self._gear_btn.setFixedSize(36, 36)
+        self._gear_btn.setCursor(Qt.PointingHandCursor)
+        self._gear_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLOR_PANEL}; color: {COLOR_TEXT_MUTED};
+                border: 1px solid {COLOR_BORDER};
+                font-size: 16px;
+            }}
+            QPushButton:hover {{
+                background: {COLOR_HOVER}; color: {COLOR_TEXT};
+            }}
+        """)
+        self._gear_btn.clicked.connect(self._show_settings_menu)
+        hl.addWidget(self._gear_btn)
+
+        self._root.addWidget(hdr)
+
+    def _build_widgets(self):
+        grid = QGridLayout()
         grid.setSpacing(16)
 
-        left_panel = QFrame()
-        left_panel.setStyleSheet(f"background: {COLOR_PANEL};")
-        lp = QVBoxLayout(left_panel)
-        lp.setContentsMargins(20, 16, 20, 16)
-        lp.setSpacing(12)
+        config = [
+            ("kpi_cards", KpiCardsWidget, 0, 0),
+            ("course_summary", CourseSummaryWidget, 1, 0),
+            ("heatmap", HeatmapWidget, 2, 0),
+            ("activity_feed", ActivityFeedWidget, 3, 0),
+            ("alerts", AlertsWidget, 0, 1),
+            ("evolution", EvolutionWidget, 1, 1),
+            ("quick_actions", QuickActionsWidget, 2, 1),
+            ("documents", DocumentsWidget, 3, 1),
+        ]
 
-        lh = QLabel("Distribución por curso")
-        lh.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 14px; font-weight: 600;")
-        lp.addWidget(lh)
+        for wid_id, cls, row, col in config:
+            if wid_id == "quick_actions":
+                w = cls(self.main, self)
+            elif wid_id == "documents":
+                w = cls(self.main, self)
+            else:
+                w = cls(self)
+            self._widgets[wid_id] = w
+            grid.addWidget(w, row, col)
 
-        self.course_stats_widget = QVBoxLayout()
-        lp.addLayout(self.course_stats_widget)
-        lp.addStretch()
+        grid.setColumnStretch(0, 3)
+        grid.setColumnStretch(1, 2)
+        self._grid = grid
+        self._root.addLayout(grid)
 
-        grid.addWidget(left_panel, 1)
+    def _load_settings(self):
+        import json
+        from pathlib import Path
+        layout_file = Path(__file__).parent.parent / "dashboard_layout.json"
+        hidden = []
+        try:
+            if layout_file.exists():
+                with open(layout_file) as f:
+                    hidden = json.load(f).get("hidden", [])
+        except Exception:
+            pass
+        for wid_id, w in self._widgets.items():
+            w.setVisible(wid_id not in hidden)
 
-        right_panel = QFrame()
-        right_panel.setStyleSheet(f"background: {COLOR_PANEL};")
-        rp = QVBoxLayout(right_panel)
-        rp.setContentsMargins(20, 16, 20, 16)
-        rp.setSpacing(12)
+    def _show_settings_menu(self):
+        import json
+        from pathlib import Path
+        layout_file = Path(__file__).parent.parent / "dashboard_layout.json"
 
-        rh = QLabel("Información del sistema")
-        rh.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 14px; font-weight: 600;")
-        rp.addWidget(rh)
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background: {COLOR_SURFACE};
+                color: {COLOR_TEXT};
+                border: 1px solid {COLOR_BORDER};
+                padding: 4px 0;
+            }}
+            QMenu::item {{
+                padding: 8px 24px;
+                font-size: 12px;
+            }}
+            QMenu::item:selected {{
+                background: {COLOR_SIDEBAR_ACTIVE};
+            }}
+            QMenu::indicator {{
+                width: 16px;
+                height: 16px;
+                margin-left: 4px;
+            }}
+        """)
 
-        self.db_label = QLabel(f"Base de datos: {get_db_path()}")
-        self.db_label.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 11px;")
-        self.db_label.setWordWrap(True)
-        rp.addWidget(self.db_label)
+        hidden = []
+        try:
+            if layout_file.exists():
+                with open(layout_file) as f:
+                    hidden = json.load(f).get("hidden", [])
+        except Exception:
+            pass
+        hidden_set = set(hidden)
 
-        self.stat_detail = QLabel("")
-        self.stat_detail.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 11px;")
-        rp.addWidget(self.stat_detail)
+        labels = {
+            "kpi_cards": "Indicadores principales",
+            "course_summary": "Distribución por curso",
+            "heatmap": "Tasa de aprobación",
+            "alerts": "Alertas",
+            "activity_feed": "Últimos movimientos",
+            "evolution": "Evolución por evaluación",
+            "quick_actions": "Acciones rápidas",
+            "documents": "Documentos recientes",
+        }
 
-        rp.addStretch()
-        grid.addWidget(right_panel, 1)
+        for wid_id, label in labels.items():
+            if wid_id not in self._widgets:
+                continue
+            a = QAction(f"  {label}", self)
+            a.setCheckable(True)
+            a.setChecked(wid_id not in hidden_set)
+            a.setData(wid_id)
+            a.triggered.connect(lambda checked, w=wid_id: self._toggle_widget(w))
+            menu.addAction(a)
 
-        layout.addLayout(grid)
+        menu.exec(self._gear_btn.mapToGlobal(
+            self._gear_btn.rect().bottomRight()
+        ))
 
-    def _clear_layout(self, layout):
-        while layout.count():
-            item = layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+    def _toggle_widget(self, wid_id):
+        import json
+        from pathlib import Path
+        layout_file = Path(__file__).parent.parent / "dashboard_layout.json"
+
+        w = self._widgets.get(wid_id)
+        if not w:
+            return
+
+        visible = not w.isVisible()
+        w.setVisible(visible)
+
+        hidden = []
+        try:
+            if layout_file.exists():
+                with open(layout_file) as f:
+                    data = json.load(f)
+                    hidden = data.get("hidden", [])
+            else:
+                data = {}
+        except Exception:
+            data = {}
+
+        hidden_set = set(hidden)
+        if visible:
+            hidden_set.discard(wid_id)
+        else:
+            hidden_set.add(wid_id)
+        data["hidden"] = list(hidden_set)
+        try:
+            with open(layout_file, "w") as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
 
     def refresh(self):
+        if not self._stats:
+            return
         try:
-            s = get_stats()
-            self.student_card.set_value(s["students"])
-            self.teacher_card.set_value(s["teachers"])
-
-            grade_count = max(s.get("grades", 0), 1)
-            pass_count = int(s.get("passed", grade_count * 0.7))
-            pass_pct = round(pass_count / grade_count * 100, 1) if grade_count else 0
-            self.pass_card.set_value(f"{pass_pct}%")
-
-            avg = round(s.get("avg_grade", 7.5), 1)
-            self.avg_card.set_value(avg)
-
-            self._clear_layout(self.course_stats_widget)
-            course_data = s.get("course_distribution", {})
-            if course_data:
-                max_count = max(course_data.values()) if course_data else 1
-                for course_name, count in sorted(course_data.items()):
-                    bar = ProgressBar(course_name, count, max_count, COLOR_ACCENT)
-                    self.course_stats_widget.addWidget(bar)
-                self.course_stats_widget.addStretch()
-
-            self.db_label.setText(f"Base de datos: {get_db_path()}")
-            self.stat_detail.setText(
-                f"{s['students']} estudiantes  |  {s['teachers']} docentes  |  "
-                f"{s['subjects']} asignaturas  |  {s['grades']} notas"
-            )
+            data = self._stats.dashboard_data()
+            for wid_id, w in self._widgets.items():
+                if hasattr(w, "update_data"):
+                    w.update_data(data)
         except Exception as e:
-            self.stat_detail.setText(f"Error: {e}")
+            QMessageBox.warning(self, "Dashboard", f"Error al cargar datos: {e}")

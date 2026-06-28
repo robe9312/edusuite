@@ -1,109 +1,80 @@
-import json
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QAbstractTableModel, QModelIndex
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QFrame,
-    QTabBar, QStackedWidget, QScrollArea,
+    QTableView, QHeaderView, QFrame, QTabBar, QStackedWidget,
 )
+from services import ServiceRegistry
 from config import (
-    COLOR_BG, COLOR_SURFACE, COLOR_PANEL, COLOR_BORDER,
+    COLOR_SURFACE, COLOR_BG, COLOR_PANEL, COLOR_BORDER,
     COLOR_TEXT, COLOR_TEXT_MUTED, COLOR_ACCENT, COLOR_ACCENT_HOVER,
+    COLOR_HOVER, COLOR_TEXT_DIM, COLOR_SIDEBAR_ACTIVE,
 )
+from spreadsheet.services import DocumentService
+from spreadsheet.core.grid_cell import CellType
 
 
-def _parse_sheet(sheet):
-    rows = []
-    grid = {}
-    max_c = 0
-    max_r = 0
+class EngineSheetModel(QAbstractTableModel):
+    def __init__(self, engine):
+        super().__init__()
+        self._engine = engine
 
-    celldata = sheet.get("celldata")
-    if isinstance(celldata, list) and len(celldata) > 0:
-        for cell in celldata:
-            r, c = cell["r"], cell["c"]
-            v = cell.get("v", {})
-            grid[(r, c)] = v
-            if r > max_r: max_r = r
-            if c > max_c: max_c = c
-    else:
-        data = sheet.get("data")
-        if isinstance(data, list) and len(data) > 0:
-            for r, row in enumerate(data):
-                if not isinstance(row, list): continue
-                for c, cell in enumerate(row):
-                    if cell is not None:
-                        d = cell if isinstance(cell, dict) else {"v": cell, "m": str(cell)}
-                        grid[(r, c)] = d
-                        if r > max_r: max_r = r
-                        if c > max_c: max_c = c
+    def rowCount(self, parent=QModelIndex()):
+        return self._engine.row_count() if self._engine else 0
 
-    if not grid:
-        return [], 0, 0
+    def columnCount(self, parent=QModelIndex()):
+        return self._engine.col_count() if self._engine else 0
 
-    for r in range(max_r + 1):
-        row_data = []
-        max_col_found = max_c
-        for c in range(max_col_found + 1):
-            cell = grid.get((r, c))
-            if cell is not None:
-                m = cell.get("m", cell.get("v", ""))
-                row_data.append(str(m) if m is not None else "")
-            else:
-                row_data.append("")
-        rows.append(row_data)
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or not self._engine:
+            return None
+        cell = self._engine.get_cell(index.row(), index.column())
+        if role == Qt.DisplayRole:
+            return cell.display
+        if role == Qt.ForegroundRole:
+            return None
+        return None
 
-    return rows, max_r + 1, max_c + 1
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if role != Qt.DisplayRole:
+            return None
+        if orientation == Qt.Horizontal:
+            from string import ascii_uppercase
+            label = ""
+            n = section
+            while n >= 0:
+                label = ascii_uppercase[n % 26] + label
+                n = n // 26 - 1
+            return label
+        return str(section + 1)
 
-
-class SheetTable(QTableWidget):
-    def __init__(self, rows, parent=None):
-        super().__init__(parent)
-        if not rows:
-            return
-        self.setRowCount(len(rows) - 1)
-        self.setColumnCount(len(rows[0]) if rows else 0)
-        self.setHorizontalHeaderLabels(rows[0] if rows else [])
-        self.verticalHeader().setVisible(False)
-        self.horizontalHeader().setStretchLastSection(True)
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.setSelectionBehavior(QTableWidget.SelectRows)
-        self.setAlternatingRowColors(True)
-        self.setStyleSheet(f"""
-            QTableWidget {{
-                background: {COLOR_SURFACE}; border: 1px solid {COLOR_BORDER};
-                border-radius: 8px; gridline-color: {COLOR_BORDER};
-                color: {COLOR_TEXT}; font-size: 13px;
-            }}
-            QTableWidget::item {{ padding: 6px 10px; }}
-            QHeaderView::section {{
-                background: {COLOR_PANEL}; color: {COLOR_TEXT};
-                font-weight: 600; padding: 8px; border: none;
-                border-bottom: 1px solid {COLOR_BORDER};
-            }}
-        """)
-        for i in range(1, len(rows)):
-            for j in range(len(rows[i])):
-                item = QTableWidgetItem(rows[i][j])
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                self.setItem(i - 1, j, item)
+    def refresh(self):
+        self.beginResetModel()
+        self.endResetModel()
 
 
 class WorkbookRenderView(QWidget):
     edit_requested = Signal(str)
     delete_requested = Signal(str)
 
-    def __init__(self, section, parent=None):
+    def __init__(self, section, doc_service=None, parent=None):
         super().__init__(parent)
         self.section = section
-        self.sheets = []
+        self._doc_service = doc_service or DocumentService()
+        self._models = []
+        self._engine = None
 
-        try:
-            wb_json = section.get("workbook_json")
-            if wb_json:
-                self.sheets = json.loads(wb_json) if isinstance(wb_json, str) else wb_json
-        except (json.JSONDecodeError, TypeError):
-            self.sheets = []
+        doc_name = section.get("name", "")
+        if doc_name:
+            docs = self._doc_service.list_documents(search=doc_name)
+            if docs:
+                opened = self._doc_service.open(docs[0]["id"])
+            else:
+                opened = False
+            if not opened and "doc_id" in section:
+                opened = self._doc_service.open(section["doc_id"])
+        else:
+            opened = False
+        self._engine = self._doc_service.engine if opened else None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -112,7 +83,7 @@ class WorkbookRenderView(QWidget):
         toolbar = self._build_toolbar()
         layout.addWidget(toolbar)
 
-        if not self.sheets:
+        if not self._engine:
             empty = QLabel("Esta seccion no tiene datos de workbook")
             empty.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 14px; padding: 40px;")
             empty.setAlignment(Qt.AlignCenter)
@@ -120,18 +91,43 @@ class WorkbookRenderView(QWidget):
             return
 
         self.stack = QStackedWidget()
-        for s in self.sheets:
-            parsed, _, _ = _parse_sheet(s)
-            table = SheetTable(parsed, self)
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setWidget(table)
-            scroll.setStyleSheet(f"QScrollArea {{ border: none; background: transparent; }}")
-            self.stack.addWidget(scroll)
+        num_sheets = self._doc_service.adapter.sheet_count()
+        for i in range(num_sheets):
+            self._doc_service.adapter.sheet(i)
+            model = EngineSheetModel(self._engine)
+            self._models.append(model)
+
+            tv = QTableView()
+            tv.setModel(model)
+            tv.setAlternatingRowColors(True)
+            tv.setSelectionBehavior(QTableView.SelectRows)
+            tv.setEditTriggers(QTableView.NoEditTriggers)
+            tv.horizontalHeader().setStretchLastSection(True)
+            tv.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+            tv.verticalHeader().setDefaultSectionSize(28)
+            tv.verticalHeader().setVisible(False)
+            tv.setStyleSheet(f"""
+                QTableView {{
+                    background: {COLOR_SURFACE}; border: 1px solid {COLOR_BORDER};
+                    gridline-color: {COLOR_BORDER}; color: {COLOR_TEXT};
+                    font-size: 12px; outline: none;
+                }}
+                QTableView::item {{ padding: 4px 8px; }}
+                QTableView::item:selected {{
+                    background: {COLOR_ACCENT}44; color: {COLOR_TEXT};
+                }}
+                QHeaderView::section {{
+                    background: {COLOR_PANEL}; color: {COLOR_TEXT_MUTED};
+                    font-weight: 600; padding: 6px 8px;
+                    border: none; border-bottom: 1px solid {COLOR_BORDER};
+                    font-size: 11px;
+                }}
+            """)
+            self.stack.addWidget(tv)
 
         layout.addWidget(self.stack)
 
-        if len(self.sheets) > 1:
+        if num_sheets > 1:
             self.tabs = QTabBar()
             self.tabs.setStyleSheet(f"""
                 QTabBar {{
@@ -148,10 +144,14 @@ class WorkbookRenderView(QWidget):
                     font-weight: 600;
                 }}
             """)
-            for s in self.sheets:
-                self.tabs.addTab(s.get("name", "Sheet"))
-            self.tabs.currentChanged.connect(self.stack.setCurrentIndex)
+            for i in range(num_sheets):
+                meta = self._doc_service.adapter.sheet_meta(i)
+                self.tabs.addTab(meta.get("name", f"Sheet {i+1}"))
+            self.tabs.currentChanged.connect(self._on_tab_change)
             layout.addWidget(self.tabs)
+
+    def _on_tab_change(self, idx):
+        self.stack.setCurrentIndex(idx)
 
     def _build_toolbar(self):
         bar = QFrame()
@@ -168,18 +168,18 @@ class WorkbookRenderView(QWidget):
         dot.setStyleSheet(f"background: {color}; border-radius: 6px;")
         h.addWidget(dot)
 
-        title = QLabel(f"{icon} {sec.get('name', 'Seccion')}")
+        name = sec.get("name", "Seccion")
+        title = QLabel(f"{icon} {name}")
         title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {COLOR_TEXT};")
         h.addWidget(title)
 
         stype = sec.get("type", "spreadsheet")
-        type_badge = QLabel(stype)
-        type_badge.setStyleSheet(f"""
+        badge = QLabel(stype)
+        badge.setStyleSheet(f"""
             background: {color}33; color: {color};
-            font-size: 11px; padding: 2px 10px; border-radius: 10px;
-            font-weight: 600;
+            font-size: 11px; padding: 2px 10px; border-radius: 10px; font-weight: 600;
         """)
-        h.addWidget(type_badge)
+        h.addWidget(badge)
 
         desc = sec.get("description", "")
         if desc:
@@ -189,9 +189,10 @@ class WorkbookRenderView(QWidget):
 
         h.addStretch()
 
-        sheet_count = QLabel(f"{len(self.sheets)} hoja(s)")
-        sheet_count.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px; margin-right: 8px;")
-        h.addWidget(sheet_count)
+        sc = self._doc_service.adapter.sheet_count()
+        sc_lbl = QLabel(f"{sc} hoja(s)")
+        sc_lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px; margin-right: 8px;")
+        h.addWidget(sc_lbl)
 
         btn = QPushButton("Editar en LuckySheet")
         btn.setStyleSheet(f"""
@@ -213,3 +214,17 @@ class WorkbookRenderView(QWidget):
         h.addWidget(btn_del)
 
         return bar
+
+    def refresh_model(self):
+        for m in self._models:
+            m.refresh()
+
+    @classmethod
+    def from_data(cls, doc_service, doc_name="Documento", parent=None):
+        sec = {
+            "section_key": f"preview_{id(doc_service)}",
+            "name": doc_name,
+            "icon": "\U0001f4c4",
+            "type": "spreadsheet",
+        }
+        return cls(sec, doc_service, parent)

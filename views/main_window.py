@@ -5,15 +5,18 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
 import json
 
-from db.database import init_db
+from db.database import init_db, get_all_custom_sections, get_custom_section
 from config import *
 from session import current_user, has_permission, logout
+
+from services import ServiceRegistry
 
 from widgets.sidebar import CompactSidebar
 from widgets.header_bar import HeaderBar
 from widgets.status_bar import StatusBar
 from widgets.command_palette import CommandPalette
 
+from views.home_view import HomeView
 from views.dashboard_view import DashboardView
 from views.grades_view import GradesView
 from views.students_view import StudentsView
@@ -24,12 +27,12 @@ from views.subjects_view import SubjectsView
 from views.backup_view import BackupView
 from views.editor_view import EditorView
 from views.settings_view import SettingsView
+from views.document_manager import DocumentManagerView
 from widgets.custom_section_view import CustomSectionView
 from widgets.workbook_renderer import WorkbookRenderView
-from db.database import get_all_custom_sections, get_custom_section, update_custom_section_meta
 
 SIDEBAR_TO_KEY = {
-    "inicio": "dashboard",
+    "inicio": "inicio",
     "dashboard": "dashboard",
     "notas": "grades",
     "estudiantes": "students",
@@ -43,6 +46,7 @@ SIDEBAR_TO_KEY = {
 }
 
 VIEW_CLASSES = {
+    "inicio": HomeView,
     "dashboard": DashboardView,
     "grades": GradesView,
     "students": StudentsView,
@@ -50,14 +54,16 @@ VIEW_CLASSES = {
     "subjects": SubjectsView,
     "enrollment": EnrollmentView,
     "expenses": ExpensesView,
-    "editor": EditorView,
+    "editor": DocumentManagerView,
     "backup": BackupView,
     "settings": SettingsView,
 }
 
+EDITOR_VIEW_KEYS = {"editor"}
+
 PAGE_LABELS_SINGULAR = {
-    "dashboard": "Dashboard",
     "inicio": "Inicio",
+    "dashboard": "Dashboard",
     "grades": "Notas",
     "students": "Estudiantes",
     "teachers": "Docentes",
@@ -65,7 +71,7 @@ PAGE_LABELS_SINGULAR = {
     "enrollment": "Matrícula",
     "gastos": "Gastos",
     "backup": "Backup",
-    "editor": "Editor",
+    "editor": "Documentos",
     "settings": "Configuración",
 }
 
@@ -110,12 +116,20 @@ class MainWindow(QMainWindow):
         self.status_bar = StatusBar()
         root.addWidget(self.status_bar)
 
+        self._init_services()
         self._init_views()
         self._load_custom_sections()
         self._setup_shortcuts()
         self._setup_status()
 
         self._show_first_available()
+
+    def _init_services(self):
+        from services.statistics_service import StatisticsService
+        from services.spreadsheet_service import SpreadsheetService
+        reg = ServiceRegistry.instance()
+        reg.register("statistics", StatisticsService())
+        reg.register("spreadsheet", SpreadsheetService())
 
     def _init_views(self):
         for perm_key, view_class in VIEW_CLASSES.items():
@@ -125,6 +139,13 @@ class MainWindow(QMainWindow):
                 self.stack.addWidget(view)
                 self._view_index[perm_key] = self.stack.indexOf(view)
                 self._view_keys.append(perm_key)
+        if has_permission("editor"):
+            self._editor_instance = EditorView(self)
+            self.stack.addWidget(self._editor_instance)
+            self._editor_index = self.stack.indexOf(self._editor_instance)
+        else:
+            self._editor_instance = None
+            self._editor_index = -1
 
     def _setup_status(self):
         user = current_user()
@@ -186,6 +207,10 @@ class MainWindow(QMainWindow):
         self.sidebar.add_custom_item(section_key, icon, name)
 
     def _show_first_available(self):
+        for preferred in ("inicio", "dashboard"):
+            if preferred in self._view_widgets:
+                self._navigate(preferred)
+                return
         for key in self._view_keys:
             self._navigate(key)
             return
@@ -217,15 +242,17 @@ class MainWindow(QMainWindow):
         self._show_first_available()
 
     def _edit_workbook_section(self, section_key):
-        sec = get_custom_section(section_key)
-        if sec and sec.get("workbook_json"):
-            editor = self._view_widgets.get("editor")
+        from db.database import get_document
+        ss = ServiceRegistry.instance().spreadsheet()
+        docs = ss.doc_service.list_documents(search=section_key)
+        doc = docs[0] if docs else None
+        if doc:
+            ss.doc_service.open(doc["id"])
+            editor = self._editor_instance
             if editor:
-                wb = json.loads(sec["workbook_json"])
-                editor.load_workbook(wb)
-                self.sidebar.set_active_page("editor")
+                ss.doc_service.load_into_editor(editor)
                 self.stack.setCurrentWidget(editor)
-                self.header_bar.set_breadcrumb(f"Inicio / Editor - {sec.get('name', '')}")
+                self.header_bar.set_breadcrumb(f"Inicio / Editor - {doc.get('name', 'Documento')}")
 
     def _navigate(self, sidebar_key):
         perm_key = SIDEBAR_TO_KEY.get(sidebar_key, sidebar_key)

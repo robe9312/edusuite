@@ -1,14 +1,12 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox,
-    QComboBox, QLineEdit, QHeaderView, QDialog, QRadioButton, QButtonGroup,
-    QFrame,
+    QComboBox, QLineEdit, QDialog, QRadioButton, QButtonGroup, QFrame,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence, QUndoStack
 
-from db.database import get_all_students
 from config import *
-from models.column_definition import build_grade_columns, ColumnType
+from models.column_definition import ColumnDef, ColumnType
 from models.spreadsheet_model import SpreadsheetTableModel
 from models.grade_proxy import GradeProxyModel
 from widgets.spreadsheet_view import SpreadsheetView
@@ -92,7 +90,8 @@ class ExportDialog(QDialog):
         sl.itemAt(0).widget().setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px;")
         self.student_combo = QComboBox()
         self.student_combo.setStyleSheet(f"QComboBox {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; padding: 4px 8px; min-height: 28px; }}")
-        students = get_all_students()
+        from repositories import student_repo
+        students = student_repo.all()
         for s in students:
             self.student_combo.addItem(f"{s.get('code','')} - {s.get('nombre','')}", s["id"])
         sl.addWidget(self.student_combo)
@@ -140,25 +139,55 @@ class ExportDialog(QDialog):
         self.accept()
 
 
-class StatBadge(QFrame):
+class _GradeStatBadge(QFrame):
     def __init__(self, label, value="—", color=COLOR_TEXT):
         super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)
-        layout.setSpacing(0)
-        self.val_lbl = QLabel(str(value))
-        self.val_lbl.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {color};")
-        layout.addWidget(self.val_lbl)
+        self.setStyleSheet(f"background: {COLOR_PANEL}; border: 1px solid {COLOR_BORDER};")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(14, 8, 14, 8)
+        lay.setSpacing(2)
+        self.val = QLabel(str(value))
+        self.val.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {color};")
+        lay.addWidget(self.val)
         lbl = QLabel(label)
-        lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 10px;")
-        layout.addWidget(lbl)
+        lbl.setStyleSheet(f"font-size: 10px; color: {COLOR_TEXT_DIM};")
+        lay.addWidget(lbl)
+
+
+def _build_subject_grade_columns(subject):
+    group = subject.get("name", "")
+    sid = subject["id"]
+    cols = [
+        ColumnDef("nombre", "Alumno", ColumnType.FROZEN, width=200, align="left", frozen=True),
+    ]
+    for p in ("T1", "T2", "T3"):
+        cols.append(ColumnDef(
+            id=f"{sid}_{p}", name=p,
+            col_type=ColumnType.GRADE, group=group,
+            width=64, editable=True, heatmap=True,
+            meta={"subject_id": sid, "period": p},
+            tooltip=f"{group} {p}",
+        ))
+    cols.append(ColumnDef(
+        id=f"{sid}_prom", name="Prom",
+        col_type=ColumnType.COMPUTED, group=group,
+        width=56, formula="avg", heatmap=True,
+        tooltip=f"{group} Promedio",
+    ))
+    cols.append(ColumnDef(
+        id=f"{sid}_estado", name="Estado",
+        col_type=ColumnType.STATUS, group=group,
+        width=56,
+        tooltip=f"{group} Estado",
+    ))
+    return cols
 
 
 class GradesView(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
-        self._current_subjects = []
+        self._current_subject = None
         self._students_data = []
         self._model = None
         self._proxy = None
@@ -187,29 +216,66 @@ class GradesView(QWidget):
         header.setStyleSheet(f"font-size: 20px; font-weight: 600; color: {COLOR_TEXT};")
         layout.addWidget(header)
 
+        self._subject_header = QFrame()
+        self._subject_header.setStyleSheet(f"background: {COLOR_PANEL}; border: 1px solid {COLOR_BORDER};")
+        self._subject_header.setFixedHeight(60)
+        sh_lay = QHBoxLayout(self._subject_header)
+        sh_lay.setContentsMargins(20, 0, 20, 0)
+        sh_lay.setSpacing(20)
+
+        self._subj_title = QLabel("")
+        self._subj_title.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {COLOR_TEXT};")
+        sh_lay.addWidget(self._subj_title)
+
+        self._subj_teacher = QLabel("")
+        self._subj_teacher.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_MUTED};")
+        sh_lay.addWidget(self._subj_teacher)
+
+        self._subj_course = QLabel("")
+        self._subj_course.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_MUTED};")
+        sh_lay.addWidget(self._subj_course)
+
+        self._subj_students = QLabel("")
+        self._subj_students.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_MUTED};")
+        sh_lay.addWidget(self._subj_students)
+
+        sh_lay.addStretch()
+
+        self._subj_year = QLabel("")
+        self._subj_year.setStyleSheet(f"""
+            color: {COLOR_ACCENT}; font-size: 11px; font-weight: 600;
+            padding: 3px 10px;
+            border: 1px solid {COLOR_ACCENT};
+        """)
+        sh_lay.addWidget(self._subj_year)
+
+        self._subject_header.setVisible(False)
+        layout.addWidget(self._subject_header)
+
         filter_bar = QHBoxLayout()
         filter_bar.setSpacing(10)
 
-        for lbl, attr, items in [
-            ("Curso:", "course_combo", True),
-            ("Trimestre:", "period_combo", PERIODS),
-        ]:
-            l = QLabel(lbl)
-            l.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 11px;")
-            filter_bar.addWidget(l)
-            combo = QComboBox()
-            combo.setStyleSheet(f"QComboBox {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; padding: 4px 10px; min-height: 30px; min-width: 80px; }} QComboBox:focus {{ border-color: {COLOR_ACCENT}; }}")
-            setattr(self, attr, combo)
-            filter_bar.addWidget(combo)
+        course_lbl = QLabel("Curso:")
+        course_lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 11px;")
+        filter_bar.addWidget(course_lbl)
+        self.course_combo = QComboBox()
+        self.course_combo.setStyleSheet(f"QComboBox {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; padding: 4px 10px; min-height: 30px; min-width: 100px; }} QComboBox:focus {{ border-color: {COLOR_ACCENT}; }}")
+        self.course_combo.currentTextChanged.connect(self._on_course_changed)
+        filter_bar.addWidget(self.course_combo)
 
-        self.course_combo.currentTextChanged.connect(self._load_grades)
-        self.period_combo.currentTextChanged.connect(self._load_grades)
+        subj_lbl = QLabel("Asignatura:")
+        subj_lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 11px;")
+        filter_bar.addWidget(subj_lbl)
+        self.subject_combo = QComboBox()
+        self.subject_combo.setStyleSheet(f"QComboBox {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; padding: 4px 10px; min-height: 30px; min-width: 160px; }} QComboBox:focus {{ border-color: {COLOR_ACCENT}; }}")
+        self.subject_combo.currentTextChanged.connect(self._load_grades)
+        filter_bar.addWidget(self.subject_combo)
 
         filter_bar.addStretch()
 
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText("Buscar alumno...")
-        self._search_input.setFixedWidth(200)
+        self._search_input.setFixedWidth(180)
         self._search_input.setFixedHeight(32)
         self._search_input.textChanged.connect(self._on_search)
         self._search_input.setStyleSheet(f"QLineEdit {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER}; color: {COLOR_TEXT}; font-size: 12px; padding: 0 12px; }} QLineEdit:focus {{ border-color: {COLOR_ACCENT}; }}")
@@ -224,6 +290,11 @@ class GradesView(QWidget):
         export_btn.setStyleSheet(f"QPushButton {{ padding: 0 16px; height: 32px; border: none; background: {COLOR_ACCENT}; color: #ffffff; font-size: 12px; }} QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}")
         export_btn.clicked.connect(self._export_dialog)
         filter_bar.addWidget(export_btn)
+
+        luckysheet_btn = QPushButton("Editar diseño")
+        luckysheet_btn.setStyleSheet(f"QPushButton {{ padding: 0 16px; height: 32px; border: 1px solid {COLOR_BORDER}; background: transparent; color: {COLOR_TEXT_MUTED}; font-size: 12px; }} QPushButton:hover {{ background: {COLOR_HOVER}; color: {COLOR_TEXT}; }}")
+        luckysheet_btn.clicked.connect(self._open_in_luckysheet)
+        filter_bar.addWidget(luckysheet_btn)
 
         layout.addLayout(filter_bar)
 
@@ -243,7 +314,7 @@ class GradesView(QWidget):
         self._footer_frame = QWidget()
         self._footer_layout = QHBoxLayout(self._footer_frame)
         self._footer_layout.setContentsMargins(0, 0, 0, 0)
-        self._footer_layout.setSpacing(24)
+        self._footer_layout.setSpacing(12)
         footer.addWidget(self._footer_frame)
         footer.addStretch()
         layout.addLayout(footer)
@@ -274,23 +345,72 @@ class GradesView(QWidget):
     def _close_panel(self):
         self.student_panel.hide_panel()
 
+    def _update_subject_header(self, subject, course, students):
+        if not subject or not course:
+            self._subject_header.setVisible(False)
+            return
+        self._subj_title.setText(subject.get("name", ""))
+        teacher_id = subject.get("teacher_id")
+        if teacher_id:
+            try:
+                from db.database import get_db_path
+                import sqlite3
+                conn = sqlite3.connect(get_db_path())
+                row = conn.execute("SELECT nombre FROM teachers WHERE id=?", (teacher_id,)).fetchone()
+                teacher_name = row[0] if row else ""
+                conn.close()
+            except Exception:
+                teacher_name = ""
+            self._subj_teacher.setText(f"👨‍🏫 {teacher_name}" if teacher_name else "")
+            self._subj_teacher.setVisible(bool(teacher_name))
+        else:
+            self._subj_teacher.setVisible(False)
+        self._subj_course.setText(f"📖 {course}")
+        count = len(students) if students else 0
+        self._subj_students.setText(f"👥 {count} estudiantes")
+        self._subj_year.setText("Evaluación 2025-2026")
+        self._subject_header.setVisible(True)
+
+    def _on_course_changed(self):
+        self._populate_subjects()
+        self._load_grades()
+
+    def _populate_subjects(self):
+        course = self.course_combo.currentText()
+        self.subject_combo.blockSignals(True)
+        self.subject_combo.clear()
+        if course:
+            subs = subject_repo.for_course(course)
+            for s in subs:
+                self.subject_combo.addItem(s.get("name", ""), s.get("id"))
+        self.subject_combo.blockSignals(False)
+
     def _load_grades(self):
         course = self.course_combo.currentText()
-        period = self.period_combo.currentText()
-        if not course:
+        subj_name = self.subject_combo.currentText()
+        if not course or not subj_name:
             self.spreadsheet.setModel(None)
+            self._subject_header.setVisible(False)
             return
+
+        subjects = subject_repo.for_course(course)
+        subject = next((s for s in subjects if s.get("name") == subj_name), None)
+        if not subject:
+            self.spreadsheet.setModel(None)
+            self._subject_header.setVisible(False)
+            return
+        self._current_subject = subject
 
         students = student_repo.by_course(course)
-        subjects = subject_repo.for_course(course)
-        self._current_subjects = subjects
         self._students_data = students
 
-        if not subjects or not students:
+        self._update_subject_header(subject, course, students)
+
+        if not students:
             self.spreadsheet.setModel(None)
             return
 
-        cols, _ = build_grade_columns(subjects, period)
+        cols = _build_subject_grade_columns(subject)
 
         def load_cell(row_id, col_def):
             meta = col_def.meta
@@ -325,35 +445,39 @@ class GradesView(QWidget):
         self._apply_search()
         self._update_footer()
 
-    def _on_selection_changed(self):
-        pass
-
     def _update_footer(self):
         while self._footer_layout.count():
             item = self._footer_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        if not self._model or not self._students_data:
+        if not self._model or not self._students_data or not self._current_subject:
             return
-        avgs = []
+
+        sid = self._current_subject["id"]
+        vals = []
         for stu in self._students_data:
-            sid = stu.get("id", 0)
-            vals = [v for v in self._model._data.get(sid, {}).values() if v is not None]
-            if vals:
-                avgs.append(round(sum(vals) / len(vals), 1))
-        if avgs:
-            prom = round(sum(avgs) / len(avgs), 1)
-            a = sum(1 for a in avgs if a >= 5.0)
-            s = len(avgs) - a
-            for text, color in [
-                (f"Promedio curso: {prom}", COLOR_TEXT),
-                (f"Aprobados: {a}", COLOR_SUCCESS),
-                (f"Suspensos: {s}", COLOR_DANGER),
-                (f"Media: {prom}", COLOR_TEXT_MUTED),
-            ]:
-                lbl = QLabel(text)
-                lbl.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: bold;")
-                self._footer_layout.addWidget(lbl)
+            for p in ("T1", "T2", "T3"):
+                g = grade_repo.get_grade(stu["id"], sid, p)
+                if g:
+                    try:
+                        vals.append(float(g["score"]))
+                    except (ValueError, TypeError):
+                        pass
+        if not vals:
+            return
+
+        prom = round(sum(vals) / len(vals), 1)
+        approved = sum(1 for v in vals if v >= 5.0)
+        failed = len(vals) - approved
+
+        badges = [
+            ("Promedio", prom, COLOR_TEXT),
+            ("Aprobados", approved, COLOR_SUCCESS),
+            ("Suspensos", failed, COLOR_DANGER),
+            ("Notas registradas", len(vals), COLOR_TEXT_MUTED),
+        ]
+        for label, value, color in badges:
+            self._footer_layout.addWidget(_GradeStatBadge(label, value, color))
 
     def _save_all(self):
         if not self._model:
@@ -366,6 +490,23 @@ class GradesView(QWidget):
         msg.setText(f"{count} notas guardadas." if count else "Sin cambios.")
         msg.exec()
         self.main.refresh_stats()
+
+    def _open_in_luckysheet(self):
+        if not self._current_subject:
+            return
+        from services import ServiceRegistry
+        ss = ServiceRegistry.instance().spreadsheet()
+        subj = self._current_subject
+        doc_name = f"Notas - {subj.get('name', '')}"
+        docs = ss.doc_service.list_documents(search=doc_name)
+        doc = docs[0] if docs else None
+        if doc:
+            ss.doc_service.open(doc["id"])
+            editor = self.main._editor_instance
+            if editor:
+                ss.doc_service.load_into_editor(editor)
+                self.main.stack.setCurrentWidget(editor)
+                self.main.header_bar.set_breadcrumb(f"Inicio / Editor - {doc.get('name', 'Documento')}")
 
     def _export_dialog(self):
         courses = course_repo.all_distinct()
@@ -406,6 +547,7 @@ class GradesView(QWidget):
 
     def refresh(self):
         current_course = self.course_combo.currentText()
+        current_subj = self.subject_combo.currentText()
         self.course_combo.blockSignals(True)
         self.course_combo.clear()
         courses = course_repo.all_distinct()
@@ -415,4 +557,13 @@ class GradesView(QWidget):
         elif courses:
             self.course_combo.setCurrentText(courses[0])
         self.course_combo.blockSignals(False)
+        self.subject_combo.blockSignals(True)
+        self.subject_combo.clear()
+        if self.course_combo.currentText():
+            subs = subject_repo.for_course(self.course_combo.currentText())
+            for s in subs:
+                self.subject_combo.addItem(s.get("name", ""), s.get("id"))
+            if current_subj and any(s.get("name") == current_subj for s in subs):
+                self.subject_combo.setCurrentText(current_subj)
+        self.subject_combo.blockSignals(False)
         self._load_grades()
