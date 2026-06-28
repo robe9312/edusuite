@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self._view_widgets = {}
         self._view_keys = []
         self._view_index = {}
+        self._editor_fullscreen = False
 
         central = QWidget()
         self.setCentralWidget(central)

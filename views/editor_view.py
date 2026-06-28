@@ -316,13 +316,13 @@ class EditorView(QWidget):
 
     def _toggle_fullscreen(self):
         mw = self.window()
-        if not hasattr(mw, "_editor_fullscreen"):
+        if not hasattr(mw, "_toggle_editor_fullscreen"):
             return
         mw._toggle_editor_fullscreen()
 
     def on_escape(self):
         mw = self.window()
-        if hasattr(mw, "_editor_fullscreen") and getattr(mw, "_editor_fullscreen", False):
+        if hasattr(mw, "_toggle_editor_fullscreen") and getattr(mw, "_editor_fullscreen", False):
             mw._toggle_editor_fullscreen()
 
     def import_save(self):
