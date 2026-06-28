@@ -57,7 +57,7 @@ function loadSheet(data) {
 function saveSheet() {
     setStatus('Guardando...');
     try {
-        var file = luckysheet.getLuckysheetFile();
+        var file = luckysheet.getluckysheetfile();
         var payload = JSON.stringify({
             gridKey: file.gridKey,
             name: file.title || 'Editor',
