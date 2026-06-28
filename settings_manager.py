@@ -5,6 +5,8 @@ from pathlib import Path
 _SETTINGS_PATH = Path(__file__).parent / "settings.json"
 
 DEFAULT_SETTINGS = {
+    "institution_logo_path": "",
+    "selected_theme": "oscuro",
     "institution_name": "EduSuite",
     "accent_color": "#5E81F4",
     "accent_hover_color": "#4a6cf7",
@@ -23,6 +25,7 @@ DEFAULT_SETTINGS = {
     "text_color": "#ffffff",
     "text_muted": "#aaaaaa",
     "text_dim": "#777777",
+    "institution_logo_path": ""
 }
 
 _loaded = False

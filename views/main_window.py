@@ -18,6 +18,7 @@ from views.grades_view import GradesView
 from views.students_view import StudentsView
 from views.teachers_view import TeachersView
 from views.enrollment_view import EnrollmentView
+from views.expenses_view import ExpensesView
 from views.subjects_view import SubjectsView
 from views.backup_view import BackupView
 from views.editor_view import EditorView
@@ -31,6 +32,7 @@ SIDEBAR_TO_KEY = {
     "docentes": "teachers",
     "asignaturas": "subjects",
     "matricula": "enrollment",
+    "gastos": "expenses",
     "backup": "backup",
     "editor": "editor",
     "configuracion": "settings",
@@ -43,6 +45,7 @@ VIEW_CLASSES = {
     "teachers": TeachersView,
     "subjects": SubjectsView,
     "enrollment": EnrollmentView,
+    "expenses": ExpensesView,
     "editor": EditorView,
     "backup": BackupView,
     "settings": SettingsView,
@@ -56,8 +59,9 @@ PAGE_LABELS_SINGULAR = {
     "teachers": "Docentes",
     "subjects": "Asignaturas",
     "enrollment": "Matrícula",
-    "editor": "Editor",
+    "gastos": "Gastos",
     "backup": "Backup",
+    "editor": "Editor",
     "settings": "Configuración",
 }
 

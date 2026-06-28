@@ -1,187 +1,337 @@
 {
-  "/home/rohdinn/EduSuite/PySide6/__init__.py": {
-    "mtime": 1782468482.2194803,
-    "ast_hash": "c453eb8aab517ace9ce1bee0bb5b4ac5",
-    "semantic_hash": "c453eb8aab517ace9ce1bee0bb5b4ac5"
+  "PySide6/__init__.py": {
+    "mtime": 1782567039.8544054,
+    "ast_hash": "ea3205158b7509d71cef0e0cb1035602",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/assets/luckysheet/luckysheet.umd.min.js": {
+  "assets/luckysheet/luckysheet.umd.min.js": {
     "mtime": 1782467606.9566717,
     "ast_hash": "22b18d9f4a3370e64056db68c494cb76",
     "semantic_hash": "22b18d9f4a3370e64056db68c494cb76"
   },
-  "/home/rohdinn/EduSuite/assets/luckysheet/plugins/js/plugin.js": {
+  "assets/luckysheet/plugins/js/plugin.js": {
     "mtime": 1782467946.7803247,
     "ast_hash": "5054c3449bbee7fbc4e7803a8498e6fe",
     "semantic_hash": "5054c3449bbee7fbc4e7803a8498e6fe"
   },
-  "/home/rohdinn/EduSuite/backup/backup_manager.py": {
+  "backup/backup_manager.py": {
     "mtime": 1782464994.0829484,
     "ast_hash": "a01e6cb0d8feb24049713b8500d7c9de",
     "semantic_hash": "a01e6cb0d8feb24049713b8500d7c9de"
   },
-  "/home/rohdinn/EduSuite/config.py": {
-    "mtime": 1782544569.5400443,
-    "ast_hash": "f7ddfb10f1592321cf41b5e6e26395e3",
-    "semantic_hash": "f7ddfb10f1592321cf41b5e6e26395e3"
+  "config.py": {
+    "mtime": 1782562935.5734015,
+    "ast_hash": "7759a575b10aabef45bc87e5c197490a",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/db/database.py": {
-    "mtime": 1782553239.0962818,
-    "ast_hash": "82310c2de8e49ec51dcac5c6a6fd297c",
-    "semantic_hash": "82310c2de8e49ec51dcac5c6a6fd297c"
+  "db/database.py": {
+    "mtime": 1782581403.2942646,
+    "ast_hash": "7f240bfab1bfa2905025a26851451d80",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/edusuite.sh": {
-    "mtime": 1782464999.7055862,
-    "ast_hash": "e0c0fc270d0020bfec4d6ae15c3dd300",
-    "semantic_hash": "e0c0fc270d0020bfec4d6ae15c3dd300"
+  "edusuite.sh": {
+    "mtime": 1782577567.362022,
+    "ast_hash": "b7326b46db214e7659ffe8c0963f5dc2",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/exporters/excel_exporter.py": {
-    "mtime": 1782553614.434602,
-    "ast_hash": "023d5bad0f458c88f93f3e1fc7859115",
-    "semantic_hash": "023d5bad0f458c88f93f3e1fc7859115"
+  "exporters/excel_exporter.py": {
+    "mtime": 1782556211.1694229,
+    "ast_hash": "2a6f22ac5d5120df57c5015e22fc1d6a",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/exporters/excel_importer.py": {
+  "exporters/excel_importer.py": {
     "mtime": 1782553711.7114625,
     "ast_hash": "533008eebfd69019bc4affb8c18f3ac3",
     "semantic_hash": "533008eebfd69019bc4affb8c18f3ac3"
   },
-  "/home/rohdinn/EduSuite/main.py": {
+  "main.py": {
     "mtime": 1782545045.7772238,
     "ast_hash": "93abffe3dbfbf72af1918b113f2a5173",
     "semantic_hash": "93abffe3dbfbf72af1918b113f2a5173"
   },
-  "/home/rohdinn/EduSuite/session.py": {
+  "session.py": {
     "mtime": 1782544956.0659966,
     "ast_hash": "b14bcddd0683ccc6ce64e3affaefbb9d",
     "semantic_hash": "b14bcddd0683ccc6ce64e3affaefbb9d"
   },
-  "/home/rohdinn/EduSuite/ui_style.py": {
+  "ui_style.py": {
     "mtime": 1782544625.137553,
     "ast_hash": "511b1fdf7b71361ef4b926b19f23ffdb",
     "semantic_hash": "511b1fdf7b71361ef4b926b19f23ffdb"
   },
-  "/home/rohdinn/EduSuite/views/backup_view.py": {
+  "views/backup_view.py": {
     "mtime": 1782544163.3935976,
     "ast_hash": "aa6652337e0eada06f8158467ca6b642",
     "semantic_hash": "aa6652337e0eada06f8158467ca6b642"
   },
-  "/home/rohdinn/EduSuite/views/dashboard_view.py": {
-    "mtime": 1782544635.4176471,
-    "ast_hash": "05900b0f1ece9b409136668b25c45d76",
-    "semantic_hash": "05900b0f1ece9b409136668b25c45d76"
+  "views/dashboard_view.py": {
+    "mtime": 1782562161.0920413,
+    "ast_hash": "7fc11edec16ef54e9f6a4489fbd7d316",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/views/editor_view.py": {
-    "mtime": 1782553434.45501,
-    "ast_hash": "5529546c6ddf543e1748bb4824286834",
-    "semantic_hash": "5529546c6ddf543e1748bb4824286834"
+  "views/editor_view.py": {
+    "mtime": 1782580105.0391927,
+    "ast_hash": "397d3fd4d3820ed464f094ee855ac9b7",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/views/enrollment_view.py": {
+  "views/enrollment_view.py": {
     "mtime": 1782552113.8333275,
     "ast_hash": "c451410ba054fef6604ed18ee0faa629",
     "semantic_hash": "c451410ba054fef6604ed18ee0faa629"
   },
-  "/home/rohdinn/EduSuite/views/grades_view.py": {
-    "mtime": 1782553385.0515728,
-    "ast_hash": "fa15f969e61c61d103eda629b53ac242",
-    "semantic_hash": "fa15f969e61c61d103eda629b53ac242"
+  "views/grades_view.py": {
+    "mtime": 1782568057.2713149,
+    "ast_hash": "cf56d3469497ae8c8745a3743f960058",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/views/login_dialog.py": {
+  "views/login_dialog.py": {
     "mtime": 1782544964.779116,
     "ast_hash": "fdddaf67f040451c00e4635673ce5231",
     "semantic_hash": "fdddaf67f040451c00e4635673ce5231"
   },
-  "/home/rohdinn/EduSuite/views/main_window.py": {
-    "mtime": 1782545275.4020586,
-    "ast_hash": "4f0f2b8cbb8b29878a1a1b850a815528",
-    "semantic_hash": "4f0f2b8cbb8b29878a1a1b850a815528"
+  "views/main_window.py": {
+    "mtime": 1782581451.8916678,
+    "ast_hash": "745839fe446c5d2caf7e36f762009474",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/views/settings_view.py": {
-    "mtime": 1782548073.1868248,
-    "ast_hash": "a506f1ea7bba254f3824770985d84af5",
-    "semantic_hash": "a506f1ea7bba254f3824770985d84af5"
+  "views/settings_view.py": {
+    "mtime": 1782556661.668661,
+    "ast_hash": "e6e0a98435f2db4328271d00532b167e",
+    "semantic_hash": ""
   },
-  "/home/rohdinn/EduSuite/views/students_view.py": {
+  "views/students_view.py": {
     "mtime": 1782553349.2892566,
     "ast_hash": "aa3c6df209f9af676a5e79699b3512d8",
     "semantic_hash": "aa3c6df209f9af676a5e79699b3512d8"
   },
-  "/home/rohdinn/EduSuite/views/subjects_view.py": {
+  "views/subjects_view.py": {
     "mtime": 1782544102.4880612,
     "ast_hash": "79f6b9bceaa20165e63f35e2a8f0356a",
     "semantic_hash": "79f6b9bceaa20165e63f35e2a8f0356a"
   },
-  "/home/rohdinn/EduSuite/views/teachers_view.py": {
+  "views/teachers_view.py": {
     "mtime": 1782544076.2778304,
     "ast_hash": "04928e2ead4a419df54c168c9b049e8e",
     "semantic_hash": "04928e2ead4a419df54c168c9b049e8e"
   },
-  "/home/rohdinn/EduSuite/.anchor-summary.md": {
+  ".anchor-summary.md": {
     "mtime": 1782543580.8757844,
     "ast_hash": "bbd459f918b215f3abe27169d1f1f312",
     "semantic_hash": "bbd459f918b215f3abe27169d1f1f312"
   },
-  "/home/rohdinn/EduSuite/assets/luckysheet/index.html": {
+  "assets/luckysheet/index.html": {
     "mtime": 1782468105.406556,
     "ast_hash": "f4226ac847a822008b4240643d304ca2",
     "semantic_hash": "f4226ac847a822008b4240643d304ca2"
   },
-  "/home/rohdinn/EduSuite/assets/luckysheet/standalone.html": {
+  "assets/luckysheet/standalone.html": {
     "mtime": 1782515119.1147215,
     "ast_hash": "494d1fe0634c8090b047bc45c2e2d43c",
     "semantic_hash": "494d1fe0634c8090b047bc45c2e2d43c"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/deudores_2024-2025_2026-06-26_09-32-34_803bc075.md": {
+  "graphify-out/converted/deudores_2024-2025_2026-06-26_09-32-34_803bc075.md": {
     "mtime": 1782554020.1612122,
     "ast_hash": "20e7cecaad325b7c1159cbb9e2ebdf7f",
     "semantic_hash": "20e7cecaad325b7c1159cbb9e2ebdf7f"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/estudiantes_1_2026-06-26_08-16-04_e96c2bd8.md": {
+  "graphify-out/converted/estudiantes_1_2026-06-26_08-16-04_e96c2bd8.md": {
     "mtime": 1782554020.1733243,
     "ast_hash": "b7e566c8c324eee81972ef98cdbda3c5",
     "semantic_hash": "b7e566c8c324eee81972ef98cdbda3c5"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/estudiantes_1_2026-06-26_08-47-07_bcc82438.md": {
+  "graphify-out/converted/estudiantes_1_2026-06-26_08-47-07_bcc82438.md": {
     "mtime": 1782554020.1895366,
     "ast_hash": "d0777e7be0543e15a8c8fb782e5614aa",
     "semantic_hash": "d0777e7be0543e15a8c8fb782e5614aa"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/matricula_2024-2025_2026-06-26_09-32-34_f978561a.md": {
+  "graphify-out/converted/matricula_2024-2025_2026-06-26_09-32-34_f978561a.md": {
     "mtime": 1782554020.1981814,
     "ast_hash": "47e8a2eb641e07ab33147c5c921fe41d",
     "semantic_hash": "47e8a2eb641e07ab33147c5c921fe41d"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-26_08-16-04_a6a59185.md": {
+  "graphify-out/converted/notas_1_2026-06-26_08-16-04_a6a59185.md": {
     "mtime": 1782554020.2098315,
     "ast_hash": "699ea39179f252e4b92b1d4a8fc1f69b",
     "semantic_hash": "699ea39179f252e4b92b1d4a8fc1f69b"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-26_08-28-22_aa478498.md": {
+  "graphify-out/converted/notas_1_2026-06-26_08-28-22_aa478498.md": {
     "mtime": 1782554020.2195783,
     "ast_hash": "af8ebeedcf39347be27a836ac7231c87",
     "semantic_hash": "af8ebeedcf39347be27a836ac7231c87"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-26_08-47-07_1ae4793f.md": {
+  "graphify-out/converted/notas_1_2026-06-26_08-47-07_1ae4793f.md": {
     "mtime": 1782554020.230989,
     "ast_hash": "8502eb674592d4f60277a02d66c17a0d",
     "semantic_hash": "8502eb674592d4f60277a02d66c17a0d"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-27_09-41-01_e765fd3b.md": {
+  "graphify-out/converted/notas_1_2026-06-27_09-41-01_e765fd3b.md": {
     "mtime": 1782554020.2394564,
     "ast_hash": "7a4afff27cea3ab42dfab4a28f4b406f",
     "semantic_hash": "7a4afff27cea3ab42dfab4a28f4b406f"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-27_09-41-08_2cfd4075.md": {
+  "graphify-out/converted/notas_1_2026-06-27_09-41-08_2cfd4075.md": {
     "mtime": 1782554020.2505083,
     "ast_hash": "9190c4f4e38b35a03de7b63918d51400",
     "semantic_hash": "9190c4f4e38b35a03de7b63918d51400"
   },
-  "/home/rohdinn/EduSuite/graphify-out/converted/notas_1_2026-06-27_09-41-50_6ce64d91.md": {
+  "graphify-out/converted/notas_1_2026-06-27_09-41-50_6ce64d91.md": {
     "mtime": 1782554020.2579892,
     "ast_hash": "803ddea7b3f662cc58b6f86560a86c3c",
     "semantic_hash": "803ddea7b3f662cc58b6f86560a86c3c"
   },
-  "/home/rohdinn/EduSuite/requirements.txt": {
+  "requirements.txt": {
     "mtime": 1782464994.0834193,
     "ast_hash": "8274996e5bdb261b406096f056e1bde7",
     "semantic_hash": "8274996e5bdb261b406096f056e1bde7"
+  },
+  "core/__init__.py": {
+    "mtime": 1782566252.320342,
+    "ast_hash": "5b59ae40cfe9d70bc2ca3fd2d73797b3",
+    "semantic_hash": ""
+  },
+  "core/cache.py": {
+    "mtime": 1782566229.132193,
+    "ast_hash": "a7bac53ce84443e1b65c185de722dbec",
+    "semantic_hash": ""
+  },
+  "core/clipboard_engine.py": {
+    "mtime": 1782567922.5693057,
+    "ast_hash": "8e71c87ac97b728602f80023eb5c19e2",
+    "semantic_hash": ""
+  },
+  "core/event_bus.py": {
+    "mtime": 1782566225.7181711,
+    "ast_hash": "6a10fb46727c0d9c795fc134f28a9fcc",
+    "semantic_hash": ""
+  },
+  "core/undo_commands.py": {
+    "mtime": 1782567856.122808,
+    "ast_hash": "56471d7de6d136c4b700e66d786728d9",
+    "semantic_hash": ""
+  },
+  "db/__init__.py": {
+    "mtime": 1782556283.0209591,
+    "ast_hash": "2780de4864f33eb934670ef84bfaaf1b",
+    "semantic_hash": ""
+  },
+  "exporters/__init__.py": {
+    "mtime": 1782555811.5415504,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "models/__init__.py": {
+    "mtime": 1782565130.1931784,
+    "ast_hash": "ebb7e69496f5f89a6c291e46f0179e4d",
+    "semantic_hash": ""
+  },
+  "models/column_definition.py": {
+    "mtime": 1782569869.4363554,
+    "ast_hash": "28a9263c0d8882fa113b4816bbcb2e1f",
+    "semantic_hash": ""
+  },
+  "models/grade_model.py": {
+    "mtime": 1782566738.8594704,
+    "ast_hash": "bd22bf00f663c269056c7b98921443e2",
+    "semantic_hash": ""
+  },
+  "models/grade_proxy.py": {
+    "mtime": 1782566260.9753978,
+    "ast_hash": "7df46d6ab777d34a7ac1348c817aef3e",
+    "semantic_hash": ""
+  },
+  "models/spreadsheet_model.py": {
+    "mtime": 1782567900.9631438,
+    "ast_hash": "b620361a611b725a7a96c6d0c4417c59",
+    "semantic_hash": ""
+  },
+  "models/template_manager.py": {
+    "mtime": 1782569679.7507358,
+    "ast_hash": "3f1921c17afce27de60279a1376560b9",
+    "semantic_hash": ""
+  },
+  "repositories/__init__.py": {
+    "mtime": 1782566674.9440594,
+    "ast_hash": "074d9786bfd5d2d88dac07d4ed440ed6",
+    "semantic_hash": ""
+  },
+  "repositories/grade_repository.py": {
+    "mtime": 1782566256.972372,
+    "ast_hash": "c2d25e4371a5152b76efd0a1fef02523",
+    "semantic_hash": ""
+  },
+  "settings_manager.py": {
+    "mtime": 1782562181.6792755,
+    "ast_hash": "146138d12b928a25c74647b981f28a84",
+    "semantic_hash": ""
+  },
+  "themes/theme_dark.json": {
+    "mtime": 1782566262.436407,
+    "ast_hash": "925b776cc983689615a8593c7716380a",
+    "semantic_hash": ""
+  },
+  "themes/theme_engine.py": {
+    "mtime": 1782566267.237438,
+    "ast_hash": "70cda3264aaa0ff53a3ec91b51c0a52c",
+    "semantic_hash": ""
+  },
+  "themes/theme_light.json": {
+    "mtime": 1782566264.0684175,
+    "ast_hash": "df4e0eab32d3e75649c771ebcb23a1a3",
+    "semantic_hash": ""
+  },
+  "widgets/__init__.py": {
+    "mtime": 1782563203.0552208,
+    "ast_hash": "2ca0cae13c34e3e39481eeb255ee2038",
+    "semantic_hash": ""
+  },
+  "widgets/card.py": {
+    "mtime": 1782562151.2049325,
+    "ast_hash": "9c0402a738478b665f48659b3eb32a99",
+    "semantic_hash": ""
+  },
+  "widgets/command_palette.py": {
+    "mtime": 1782563151.169385,
+    "ast_hash": "9bc982c7026cc34180e7cf2fd74749e0",
+    "semantic_hash": ""
+  },
+  "widgets/contextual_panel.py": {
+    "mtime": 1782563197.1842394,
+    "ast_hash": "fe13ec67682c58211c83c17b5d714349",
+    "semantic_hash": ""
+  },
+  "widgets/frozen_table.py": {
+    "mtime": 1782564630.422579,
+    "ast_hash": "01467affa0aeb82c8fddee1d4bef18a7",
+    "semantic_hash": ""
+  },
+  "widgets/header_bar.py": {
+    "mtime": 1782561950.9030087,
+    "ast_hash": "934c8039159ada34150b0fa60b8e1301",
+    "semantic_hash": ""
+  },
+  "widgets/sidebar.py": {
+    "mtime": 1782581318.0755575,
+    "ast_hash": "d43bebdb15e4b7d482b912eab9353181",
+    "semantic_hash": ""
+  },
+  "widgets/spreadsheet_view.py": {
+    "mtime": 1782568112.6847298,
+    "ast_hash": "e4717f5ea1672c27a12eb9b1a8e680d2",
+    "semantic_hash": ""
+  },
+  "widgets/status_bar.py": {
+    "mtime": 1782561953.8170185,
+    "ast_hash": "138b7135bbbeddeaef7c593151b102b7",
+    "semantic_hash": ""
+  },
+  "widgets/student_panel.py": {
+    "mtime": 1782561962.476048,
+    "ast_hash": "13fcc26f334469ff21851f0ba003ef88",
+    "semantic_hash": ""
+  },
+  "views/expenses_view.py": {
+    "mtime": 1782583302.8314297,
+    "ast_hash": "18bdc0bd1c33152fab84a622d6448438",
+    "semantic_hash": ""
   }
 }

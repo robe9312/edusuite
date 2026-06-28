@@ -243,7 +243,7 @@ class EditorView(QWidget):
             return
 
         celldata = []
-        headers = ["Codigo", "Apellidos", "Nombres", f"Nota ({period})", "Obs"]
+        headers = ["Codigo", "Estudiante", "Curso", f"Nota ({period})", "Obs"]
         for c, h in enumerate(headers):
             celldata.append({"r": 0, "c": c, "v": {"v": h, "m": h, "bg": "#2a2a2a", "fc": "#ffffff"}})
         for i, s in enumerate(students, 1):
@@ -273,9 +273,14 @@ class EditorView(QWidget):
         for c, h in enumerate(headers):
             celldata.append({"r": 0, "c": c, "v": {"v": h, "m": h, "bg": "#2a2a2a", "fc": "#ffffff"}})
         for i, e in enumerate(enrollments, 1):
+            grade_level = e.get("grade_level", "")
+            level_key = COURSE_TO_LEVEL.get(grade_level, "")
+            level_name = LEVEL_LABELS.get(level_key, grade_level)
+            
             celldata.append({"r": i, "c": 0, "v": {"v": e["student_code"], "m": e["student_code"]}})
             celldata.append({"r": i, "c": 1, "v": {"v": e["student_name"], "m": e["student_name"]}})
-            celldata.append({"r": i, "c": 2, "v": {"v": e.get("grade_level", ""), "m": e.get("grade_level", "")}})
+            celldata.append({"r": i, "c": 2, "v": {"v": grade_level, "m": grade_level}})
+            celldata.append({"r": i, "c": 3, "v": {"v": level_name, "m": level_name}})
             celldata.append({"r": i, "c": 4, "v": {"v": e["total_amount"], "m": str(e["total_amount"])}})
             celldata.append({"r": i, "c": 5, "v": {"v": e["paid_amount"], "m": str(e["paid_amount"])}})
             celldata.append({"r": i, "c": 6, "v": {"v": e["status"], "m": e["status"]}})
@@ -298,19 +303,22 @@ class EditorView(QWidget):
         except FileNotFoundError:
             pass
 
+
     def import_save(self):
         if not hasattr(self, "_pending_save") or not self._pending_save:
             QMessageBox.information(self, "Sin datos", "No hay datos pendientes. Guarda desde el editor primero.")
             return
         try:
             data = json.loads(self._pending_save)
-            sheet_data = json.dumps(data.get("sheetData", []))
-            with get_connection() as conn:
-                conn.execute(
-                    "INSERT INTO workbooks (name, grid_key, type, sheet_data) VALUES (?, ?, ?, ?)",
-                    (data.get("name", "Editor"), str(uuid.uuid4()), "custom", sheet_data),
-                )
+            # Use MetaEngine to store the configuration as a project version
+            from engine.meta_engine import MetaEngine
+            engine = MetaEngine()
+            project_name = data.get("name", "Editor")
+            # Create project if not exists, then save version
+            project_id = engine.get_or_create_project(project_name)
+            version_id = engine.save_version(project_id, json.dumps(data.get("sheetData", [])))
             self._pending_save = None
-            QMessageBox.information(self, "Importado", "Datos guardados en la base de datos.")
+            QMessageBox.information(self, "Importado", f"Datos guardados como versión {version_id} del proyecto '{project_name}'.")
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+

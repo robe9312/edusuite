@@ -2,14 +2,17 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QFrame, QHeaderView,
     QDialog, QLineEdit, QComboBox, QCheckBox, QTabWidget,
-    QMessageBox, QDoubleSpinBox, QColorDialog, QScrollArea,
-    QGridLayout,
+    QMessageBox, QDoubleSpinBox, QColorDialog, QScrollArea, QGridLayout,
+    QFileDialog,
 )
+
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
 from config import *
 from ui_style import Input, Combo
+from .editor_view import EditorView
 import settings_manager as sset
 from db.database import (
     VIEW_PERMISSIONS,
@@ -444,7 +447,15 @@ class SettingsView(QWidget):
         g_layout.setSpacing(8)
         self._build_general(g_layout)
         tabs.addTab(g_page, "General")
-
+        # ── Edición de la aplicación (Luckysheet) ──
+        app_editor_page = QWidget()
+        app_editor_page.setStyleSheet(f"background: {COLOR_BG};")
+        app_editor_layout = QVBoxLayout(app_editor_page)
+        app_editor_layout.setContentsMargins(16, 16, 16, 16)
+        app_editor_layout.setSpacing(8)
+        editor_view = EditorView()
+        app_editor_layout.addWidget(editor_view)
+        tabs.addTab(app_editor_page, "Meta Editor")
         outer.addWidget(tabs)
 
     # ── School Years ──
@@ -645,85 +656,62 @@ class SettingsView(QWidget):
     # ── Apariencia ──
 
     def _build_appearance(self, layout):
+        # Scrollable container
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(f"QScrollArea {{ border: none; background: transparent; }}")
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         container = QWidget()
         container.setStyleSheet("background: transparent;")
         gl = QGridLayout(container)
         gl.setSpacing(10)
         gl.setContentsMargins(8, 8, 8, 8)
 
-        self._color_inputs = {}
-        color_fields = [
-            ("institution_name", "Nombre de la institucion", False),
-            ("main_bg", "Fondo principal", True),
-            ("surface_color", "Fondo de superficie", True),
-            ("panel_color", "Fondo de panel", True),
-            ("input_color", "Fondo de inputs", True),
-            ("sidebar_bg", "Sidebar fondo", True),
-            ("sidebar_hover", "Sidebar hover", True),
-            ("sidebar_active", "Sidebar activo", True),
-            ("accent_color", "Color de acento", True),
-            ("accent_hover_color", "Acento hover", True),
-            ("border_color", "Color de bordes", True),
-            ("hover_color", "Color hover", True),
-            ("text_color", "Texto principal", True),
-            ("text_muted", "Texto secundario", True),
-            ("text_dim", "Texto terciario", True),
-            ("success_color", "Color exito", True),
-            ("warning_color", "Color advertencia", True),
-            ("danger_color", "Color peligro", True),
-        ]
+        # Theme selection
+        theme_label = QLabel("Tema")
+        theme_label.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 12px;")
+        gl.addWidget(theme_label, 0, 0, 1, 1)
 
-        current = sset.get_all()
+        from themes import theme_engine
+        theme_combo = QComboBox()
+        themes = theme_engine.list_themes()
+        for key, name in themes.items():
+            theme_combo.addItem(name, key)
+        # set current theme
+        current_theme = sset.get("selected_theme")
+        if current_theme:
+            idx = theme_combo.findData(current_theme.lower())
+            if idx >= 0:
+                theme_combo.setCurrentIndex(idx)
+        gl.addWidget(theme_combo, 0, 1, 1, 3)
+        self._theme_combo = theme_combo
 
-        row = 0
-        for key, label, is_color in color_fields:
-            lbl = QLabel(label)
-            lbl.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 12px;")
-            gl.addWidget(lbl, row, 0, 1, 1)
+        # Institution logo picker
+        logo_label = QLabel("Logo de la institución")
+        logo_label.setStyleSheet(f"color: {COLOR_TEXT}; font-size: 12px;")
+        gl.addWidget(logo_label, 1, 0, 1, 1)
 
-            inp = QLineEdit(str(current.get(key, "")))
-            inp.setStyleSheet(f"""
-                QLineEdit {{ padding: 0 10px; height: 32px;
-                    border: 1px solid {COLOR_BORDER}; background: {COLOR_INPUT};
-                    color: {COLOR_TEXT}; font-size: 12px; }}
-                QLineEdit:focus {{ border-color: {COLOR_ACCENT}; }}
-            """)
-            gl.addWidget(inp, row, 1, 1, 1)
+        logo_line = QLineEdit(sset.get("institution_logo_path", ""))
+        logo_line.setStyleSheet(f"""
+            QLineEdit {{ padding: 0 10px; height: 32px;
+                border: 1px solid {COLOR_BORDER}; background: {COLOR_INPUT};
+                color: {COLOR_TEXT}; font-size: 12px; }}
+            QLineEdit:focus {{ border-color: {COLOR_ACCENT}; }}
+        """)
+        gl.addWidget(logo_line, 1, 1, 1, 1)
+        self._logo_line = logo_line
 
-            self._color_inputs[key] = inp
+        logo_btn = QPushButton("...")
+        logo_btn.setFixedSize(28, 28)
+        logo_btn.setStyleSheet(f"""
+            QPushButton {{ border: 1px solid {COLOR_BORDER};
+                background: transparent; color: {COLOR_TEXT_MUTED};
+                font-size: 11px; }}
+            QPushButton:hover {{ background: {COLOR_HOVER}; }}
+        """)
+        logo_btn.clicked.connect(self._choose_logo)
+        gl.addWidget(logo_btn, 1, 2, 1, 1)
 
-            if is_color:
-                preview = QFrame()
-                preview.setFixedSize(28, 28)
-                preview.setStyleSheet(f"""
-                    background: {current.get(key, '#000000')};
-                    border: 1px solid {COLOR_BORDER};
-                    border-radius: 0px;
-                """)
-                gl.addWidget(preview, row, 2, 1, 1)
-
-                pick_btn = QPushButton("...")
-                pick_btn.setFixedSize(28, 28)
-                pick_btn.setStyleSheet(f"""
-                    QPushButton {{ border: 1px solid {COLOR_BORDER};
-                        background: transparent; color: {COLOR_TEXT_MUTED};
-                        font-size: 11px; }}
-                    QPushButton:hover {{ background: {COLOR_HOVER}; }}
-                """)
-                pick_btn.clicked.connect(
-                    lambda checked, k=key, p=preview, i=inp: self._pick_color(k, p, i)
-                )
-                gl.addWidget(pick_btn, row, 3, 1, 1)
-
-            row += 1
-
-        spacer_lbl = QLabel("")
-        gl.addWidget(spacer_lbl, row, 0, 1, 4)
-        row += 1
-
+        # Buttons layout
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
         reset_btn = QPushButton("Restablecer valores")
@@ -735,9 +723,7 @@ class SettingsView(QWidget):
         """)
         reset_btn.clicked.connect(self._reset_appearance)
         btn_layout.addWidget(reset_btn)
-
         btn_layout.addStretch()
-
         apply_btn = QPushButton("Aplicar cambios")
         apply_btn.setStyleSheet(f"""
             QPushButton {{ padding: 0 16px; height: 34px; border: none;
@@ -746,11 +732,34 @@ class SettingsView(QWidget):
         """)
         apply_btn.clicked.connect(self._apply_appearance)
         btn_layout.addWidget(apply_btn)
-
-        gl.addLayout(btn_layout, row, 0, 1, 4)
+        gl.addLayout(btn_layout, 2, 0, 1, 4)
 
         scroll.setWidget(container)
         layout.addWidget(scroll)
+
+    def _choose_logo(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Seleccionar logo",
+                                            "", "Images (*.png *.jpg *.jpeg *.svg *.bmp)")
+        if path:
+            self._logo_line.setText(path)
+
+    def _apply_appearance(self):
+        selected_key = self._theme_combo.currentData()
+        if selected_key:
+            from themes import theme_engine
+            theme_engine.apply_theme(selected_key)
+        logo_path = self._logo_line.text().strip()
+        updates = {}
+        if selected_key:
+            updates["selected_theme"] = selected_key
+        if logo_path:
+            updates["institution_logo_path"] = logo_path
+        if updates:
+            sset.set_many(updates)
+        QMessageBox.information(self, "Apariencia",
+            "Cambios guardados. Reinicia la aplicación para ver los cambios completamente.")
+
+    # Duplicate _apply_appearance removed
 
     def _pick_color(self, key, preview, input_field):
         current_color = input_field.text().strip()
@@ -761,28 +770,19 @@ class SettingsView(QWidget):
             input_field.setText(hex_color)
             preview.setStyleSheet(f"background: {hex_color}; border: 1px solid {COLOR_BORDER}; border-radius: 0px;")
 
-    def _apply_appearance(self):
-        updates = {}
-        for key, inp in self._color_inputs.items():
-            val = inp.text().strip()
-            if val:
-                updates[key] = val
-        sset.set_many(updates)
-        QMessageBox.information(self, "Apariencia",
-            "Cambios guardados. Reinicia la aplicacion para ver los cambios completamente.")
+
 
     def _reset_appearance(self):
         resp = QMessageBox.question(self, "Restablecer",
             "Restablecer todos los valores de apariencia a los valores por defecto?",
             QMessageBox.Yes | QMessageBox.No)
-        if resp == QMessageBox.Yes:
-            sset.reset()
-            self._reload_appearance()
+        sset.reset()
+        self._reload_appearance()
 
     def _reload_appearance(self):
         current = sset.get_all()
-        for key, inp in self._color_inputs.items():
-            inp.setText(str(current.get(key, "")))
+        self._theme_combo.setCurrentIndex(self._theme_combo.findData(current.get("selected_theme", "").lower()))
+        self._logo_line.setText(current.get("institution_logo_path", ""))
 
     # ── Refresh ──
 

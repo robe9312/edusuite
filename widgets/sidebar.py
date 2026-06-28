@@ -1,7 +1,9 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QRect, QEasingCurve, QTimer
-
+from PySide6.QtGui import QPixmap
+import os
 from config import COLOR_SURFACE, COLOR_ACCENT, COLOR_ACCENT_HOVER, COLOR_TEXT, COLOR_TEXT_DIM, COLOR_BORDER, COLOR_HOVER
+from settings_manager import get as get_setting
 
 COLLAPSED_W = 72
 EXPANDED_W = 200
@@ -15,6 +17,7 @@ NAV_ITEMS = [
     ("docentes", "\U0001f468\u200d\U0001f3eb", "Docentes"),
     ("asignaturas", "\U0001f4dd", "Asignaturas"),
     ("matricula", "\U0001f4bc", "Matrícula"),
+    ("gastos", "\U0001f4b0", "Gastos"),
     ("backup", "\u26a0\ufe0f", "Backup"),
     ("configuracion", "\u2699\ufe0f", "Configuración"),
 ]
@@ -83,7 +86,14 @@ class CompactSidebar(QWidget):
         layout.setContentsMargins(0, 16, 0, 16)
         layout.setSpacing(2)
 
-        logo = QLabel("\U0001f393")
+        # Load institution logo if configured
+        logo_path = get_setting('institution_logo_path')
+        logo = QLabel()
+        if logo_path and os.path.isfile(logo_path):
+            pix = QPixmap(logo_path).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo.setPixmap(pix)
+        else:
+            logo.setText("\U0001f393")
         logo.setAlignment(Qt.AlignCenter)
         logo.setFixedHeight(48)
         logo.setStyleSheet(f"font-size: 24px; color: {COLOR_ACCENT};")

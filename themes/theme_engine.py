@@ -43,5 +43,8 @@ def apply_theme(name):
         return False
     _current_theme_name = theme.get("name", name)
     import settings_manager as sset
-    sset.set_many(theme)
+    # Persist theme colors and selected theme name
+    updates = dict(theme)
+    updates["selected_theme"] = _current_theme_name
+    sset.set_many(updates)
     return True

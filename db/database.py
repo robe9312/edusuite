@@ -33,16 +33,18 @@ VIEW_PERMISSIONS = {
     "teachers": "Profesores",
     "subjects": "Asignaturas",
     "enrollment": "Matrícula",
+    "expenses": "Gastos",
     "editor": "Editor",
+    "meta_editor": "Meta Editor",
     "backup": "Respaldo",
-    "settings": "Configuracion",
+    "settings": "Configuracion"
 }
 
 DEFAULT_ROLE_PERMISSIONS = {
     "administrador": list(VIEW_PERMISSIONS.keys()),
-    "jefe_estudios": ["dashboard", "grades", "students", "teachers", "subjects", "enrollment"],
+    "jefe_estudios": ["dashboard", "grades", "students", "teachers", "subjects", "enrollment", "expenses"],
     "profesor": ["dashboard", "grades"],
-    "secretaria": ["dashboard", "students", "enrollment", "backup"],
+    "secretaria": ["dashboard", "students", "enrollment", "expenses", "backup"],
 }
 
 _STUDENT_COL_MAP = {
@@ -159,7 +161,8 @@ class Database:
         """)
 
     def _create_other_tables(self, conn):
-        conn.executescript("""
+        # Execute a series of CREATE TABLE statements without nested triple quotes.
+        sql = '''
             CREATE TABLE IF NOT EXISTS teachers (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 code         TEXT UNIQUE NOT NULL,
@@ -203,8 +206,7 @@ class Database:
                 total_amount   REAL    NOT NULL DEFAULT 0,
                 paid_amount    REAL    NOT NULL DEFAULT 0,
                 payment_date   TEXT,
-                status         TEXT    NOT NULL DEFAULT 'pendiente'
-                               CHECK(status IN ('pagado','pendiente','parcial')),
+                status         TEXT    NOT NULL DEFAULT 'pendiente' CHECK(status IN ('pagado','pendiente','parcial')),
                 notes          TEXT,
                 updated_at     TEXT    DEFAULT (datetime('now')),
                 UNIQUE(student_id, school_year_id)
@@ -214,8 +216,7 @@ class Database:
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 name         TEXT NOT NULL DEFAULT 'Editor',
                 grid_key     TEXT UNIQUE NOT NULL,
-                type         TEXT NOT NULL DEFAULT 'custom'
-                             CHECK(type IN ('grades','enrollment','custom')),
+                type         TEXT NOT NULL DEFAULT 'custom' CHECK(type IN ('grades','enrollment','custom')),
                 subject_id   INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
                 school_year_id INTEGER REFERENCES school_years(id) ON DELETE SET NULL,
                 sheet_data   TEXT DEFAULT '[]',
@@ -248,34 +249,84 @@ class Database:
                 updated_at   TEXT DEFAULT (datetime('now'))
             );
 
-            CREATE TRIGGER IF NOT EXISTS trg_students_updated
-                AFTER UPDATE ON students FOR EACH ROW
-            BEGIN UPDATE students SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            -- Triggers for timestamps
+            CREATE TRIGGER IF NOT EXISTS trg_students_updated AFTER UPDATE ON students FOR EACH ROW BEGIN UPDATE students SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_teachers_updated AFTER UPDATE ON teachers FOR EACH ROW BEGIN UPDATE teachers SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_subjects_updated AFTER UPDATE ON subjects FOR EACH ROW BEGIN UPDATE subjects SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_grades_updated AFTER UPDATE ON grades FOR EACH ROW BEGIN UPDATE grades SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_school_years_updated AFTER UPDATE ON school_years FOR EACH ROW BEGIN UPDATE school_years SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_enrollment_updated AFTER UPDATE ON enrollment FOR EACH ROW BEGIN UPDATE enrollment SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_workbooks_updated AFTER UPDATE ON workbooks FOR EACH ROW BEGIN UPDATE workbooks SET updated_at = datetime('now') WHERE id = OLD.id; END;
 
-            CREATE TRIGGER IF NOT EXISTS trg_teachers_updated
-                AFTER UPDATE ON teachers FOR EACH ROW
-            BEGIN UPDATE teachers SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TABLE IF NOT EXISTS expenses (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                concept      TEXT NOT NULL,
+                amount       REAL NOT NULL,
+                date         TEXT NOT NULL,
+                notes        TEXT,
+                categoria    TEXT,
+                metodo       TEXT,
+                responsable  TEXT,
+                updated_at   TEXT DEFAULT (datetime('now'))
+            );
 
-            CREATE TRIGGER IF NOT EXISTS trg_subjects_updated
-                AFTER UPDATE ON subjects FOR EACH ROW
-            BEGIN UPDATE subjects SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_expenses_updated AFTER UPDATE ON expenses FOR EACH ROW BEGIN UPDATE expenses SET updated_at = datetime('now') WHERE id = OLD.id; END;
 
-            CREATE TRIGGER IF NOT EXISTS trg_grades_updated
-                AFTER UPDATE ON grades FOR EACH ROW
-            BEGIN UPDATE grades SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            -- MetaEditor tables
+            CREATE TABLE IF NOT EXISTS components (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL UNIQUE,
+                type         TEXT NOT NULL,
+                active       INTEGER NOT NULL DEFAULT 1,
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS component_defs (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                component_id INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+                json_blob    TEXT NOT NULL,
+                version      INTEGER NOT NULL DEFAULT 1,
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS component_perms (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                component_id INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+                role_id     INTEGER NOT NULL REFERENCES roles(id),
+                can_view    INTEGER NOT NULL DEFAULT 0,
+                can_edit    INTEGER NOT NULL DEFAULT 0,
 
-            CREATE TRIGGER IF NOT EXISTS trg_school_years_updated
-                AFTER UPDATE ON school_years FOR EACH ROW
-            BEGIN UPDATE school_years SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TABLE IF NOT EXISTS meta_projects (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL UNIQUE,
+                description  TEXT,
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            );
 
-            CREATE TRIGGER IF NOT EXISTS trg_enrollment_updated
-                AFTER UPDATE ON enrollment FOR EACH ROW
-            BEGIN UPDATE enrollment SET updated_at = datetime('now') WHERE id = OLD.id; END;
-
-            CREATE TRIGGER IF NOT EXISTS trg_workbooks_updated
-                AFTER UPDATE ON workbooks FOR EACH ROW
-            BEGIN UPDATE workbooks SET updated_at = datetime('now') WHERE id = OLD.id; END;
-        """)
+            CREATE TABLE IF NOT EXISTS meta_versions (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id   INTEGER NOT NULL REFERENCES meta_projects(id) ON DELETE CASCADE,
+                version      INTEGER NOT NULL,
+                json_config  TEXT NOT NULL,
+                state        TEXT NOT NULL CHECK(state IN ('draft','active')) DEFAULT 'draft',
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            );
+'''
+        # ── Migration: add new columns if they don't exist ───────────────────────
+        try:
+            conn.execute("ALTER TABLE expenses ADD COLUMN categoria TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE expenses ADD COLUMN metodo TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE expenses ADD COLUMN responsable TEXT")
+        except Exception:
+            pass
 
     def _row(self, row):
         return dict(row) if row else None
@@ -589,7 +640,98 @@ class Database:
                 (trimester,),
             ).fetchall()]
 
-    # ── CRUD: Años Escolares ──────────────────────────────────────────
+    
+    # ── CRUD: MetaEditor Components ───────────────────────────────────────
+    def create_component(self, name, comp_type, active=1):
+        """Create a new component definition container."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO components (name, type, active) VALUES (?, ?, ?)",
+                (name, comp_type, active),
+            )
+            return cur.lastrowid
+
+    def get_component(self, component_id):
+        with self._connect() as conn:
+            return self._row(conn.execute(
+                "SELECT * FROM components WHERE id = ?", (component_id,)
+            ).fetchone())
+
+    def get_all_components(self, active_only=True):
+        with self._connect() as conn:
+            sql = "SELECT * FROM components"
+            if active_only:
+                sql += " WHERE active = 1"
+            sql += " ORDER BY name"
+            return [dict(r) for r in conn.execute(sql).fetchall()]
+
+    def update_component(self, component_id, **kwargs):
+        fields = {k: v for k, v in kwargs.items() if v is not None}
+        if not fields:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        vals = list(fields.values()) + [component_id]
+        with self._connect() as conn:
+            conn.execute(f"UPDATE components SET {set_clause} WHERE id = ?", vals)
+
+    def delete_component(self, component_id):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM components WHERE id = ?", (component_id,))
+
+    # Component definitions (JSON blobs)
+    def save_component_def(self, component_id, json_blob, version=None):
+        """Insert a new definition version or update existing one."""
+        with self._connect() as conn:
+            if version is None:
+                # Insert as new version = max+1
+                cur = conn.execute(
+                    "INSERT INTO component_defs (component_id, json_blob) VALUES (?, ?)",
+                    (component_id, json_blob),
+                )
+                return cur.lastrowid
+            else:
+                conn.execute(
+                    "INSERT INTO component_defs (component_id, json_blob, version) VALUES (?, ?, ?)",
+                    (component_id, json_blob, version),
+                )
+                return conn.lastrowid
+
+    def get_latest_component_def(self, component_id):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM component_defs WHERE component_id = ? ORDER BY version DESC LIMIT 1",
+                (component_id,)
+            ).fetchone()
+            return self._row(row)
+
+    def get_all_component_defs(self, component_id):
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM component_defs WHERE component_id = ? ORDER BY version ASC",
+                (component_id,)
+            ).fetchall()
+            return [self._row(r) for r in rows]
+
+    # Permissions for components
+    def set_component_permission(self, component_id, role_id, can_view=0, can_edit=0):
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO component_perms (component_id, role_id, can_view, can_edit) VALUES (?, ?, ?, ?)",
+                (component_id, role_id, can_view, can_edit),
+            )
+
+    def get_component_permissions(self, component_id):
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT cp.*, r.name AS role_name FROM component_perms cp JOIN roles r ON r.id = cp.role_id WHERE cp.component_id = ?",
+                (component_id,)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    # ── End of MetaEditor CRUD ─────────────────────────────────────────────
+
+    # Existing functions continue below ...
+
 
     def create_school_year(self, label, default_amount=0):
         with self._connect() as conn:
@@ -1050,6 +1192,39 @@ class Database:
         with self._connect() as conn:
             conn.execute("UPDATE users SET password = ? WHERE id = ?", (new_password, user_id))
 
+    # ── CRUD: Gastos ──────────────────────────────────────────────────
+
+    def save_expense(self, concept, amount, date, notes=""):
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO expenses (concept, amount, date, notes) VALUES (?, ?, ?, ?)",
+                (concept, amount, date, notes),
+            )
+            return cur.lastrowid
+
+    def update_expense(self, expense_id, concept, amount, date, notes=""):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE expenses SET concept = ?, amount = ?, date = ?, notes = ? WHERE id = ?",
+                (concept, amount, date, notes, expense_id),
+            )
+
+    def delete_expense(self, expense_id):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+
+    def get_expense(self, expense_id):
+        with self._connect() as conn:
+            return self._row(conn.execute(
+                "SELECT * FROM expenses WHERE id = ?", (expense_id,)
+            ).fetchone())
+
+    def get_all_expenses(self):
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM expenses ORDER BY date DESC, id DESC"
+            ).fetchall()]
+
 
 # ── Singleton ──────────────────────────────────────────────────────────
 
@@ -1416,3 +1591,25 @@ def user_exists(username):
 
 def change_password(user_id, new_password):
     return _db.change_password(user_id, new_password)
+
+
+# ── CRUD: Gastos ──────────────────────────────────────────────────
+
+def save_expense(concept, amount, date, notes=""):
+    return _db.save_expense(concept, amount, date, notes)
+
+
+def update_expense(expense_id, concept, amount, date, notes=""):
+    return _db.update_expense(expense_id, concept, amount, date, notes)
+
+
+def delete_expense(expense_id):
+    return _db.delete_expense(expense_id)
+
+
+def get_expense(expense_id):
+    return _db.get_expense(expense_id)
+
+
+def get_all_expenses():
+    return _db.get_all_expenses()

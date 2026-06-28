@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QLineEdit, QPushButton
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
+import webbrowser
 
 from config import COLOR_SURFACE, COLOR_TEXT, COLOR_TEXT_DIM, COLOR_TEXT_MUTED, COLOR_BORDER, COLOR_INPUT, COLOR_ACCENT
 
@@ -41,6 +42,10 @@ class HeaderBar(QWidget):
         self.user_label = QLabel()
         self.user_label.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: 12px;")
         layout.addWidget(self.user_label)
+        # Button to open temporary web editor
+        self.web_button = QPushButton("Editor Web")
+        self.web_button.clicked.connect(lambda: webbrowser.open("http://localhost:5000"))
+        layout.addWidget(self.web_button)
 
         self.setStyleSheet(f"""
             HeaderBar {{

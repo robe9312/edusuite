@@ -32,6 +32,7 @@ class SpreadsheetView(QWidget):
             QTableView::item {{
                 border: none; border-bottom: 1px solid {COLOR_BORDER};
                 padding: 4px 8px;
+                color: {COLOR_TEXT};
             }}
             QTableView::item:selected {{
                 background: transparent; color: {COLOR_TEXT};

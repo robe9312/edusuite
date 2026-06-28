@@ -62,9 +62,7 @@ def build_grade_columns(subjects, period, template_id=None):
 
     # Fallback to hardcoded grade columns if no template or template loading fails
     cols = [
-        ColumnDef("code", "Código", ColumnType.FROZEN, width=90, align="left", frozen=True),
-        ColumnDef("name", "Alumno", ColumnType.FROZEN, width=200, align="left", frozen=True),
-        ColumnDef("course", "Curso", ColumnType.FROZEN, width=80, frozen=True),
+        ColumnDef("nombre", "Alumno", ColumnType.FROZEN, width=200, align="left", frozen=True),
     ]
     for subj in subjects:
         g = subj.get("name", "")
