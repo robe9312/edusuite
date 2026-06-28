@@ -4,7 +4,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QMessageBox, QFrame,
+    QComboBox, QMessageBox, QFrame, QSizePolicy,
 )
 try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -156,6 +156,15 @@ class EditorView(QWidget):
         btn_load.clicked.connect(self.load_from_db)
         h.addWidget(btn_load)
 
+        btn_fullscreen = QPushButton("⛶ Pantalla completa")
+        btn_fullscreen.setStyleSheet(f"""
+            QPushButton {{ padding: 0 12px; height: 36px; border: none;
+                background: {COLOR_ACCENT}; color: #ffffff; font-size: 12px; }}
+            QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
+        """)
+        btn_fullscreen.clicked.connect(self._toggle_fullscreen)
+        h.addWidget(btn_fullscreen)
+
         btn_import = QPushButton("Importar a DB")
         btn_import.setStyleSheet(f"""
             QPushButton {{ padding: 0 16px; height: 36px; border: none;
@@ -166,6 +175,7 @@ class EditorView(QWidget):
         h.addWidget(btn_import)
 
         h.addStretch()
+        self._btn_fullscreen = btn_fullscreen
         return bar
 
     def _find_port(self):
@@ -304,17 +314,26 @@ class EditorView(QWidget):
             pass
 
 
+    def _toggle_fullscreen(self):
+        mw = self.window()
+        if not hasattr(mw, "_editor_fullscreen"):
+            return
+        mw._toggle_editor_fullscreen()
+
+    def on_escape(self):
+        mw = self.window()
+        if hasattr(mw, "_editor_fullscreen") and getattr(mw, "_editor_fullscreen", False):
+            mw._toggle_editor_fullscreen()
+
     def import_save(self):
         if not hasattr(self, "_pending_save") or not self._pending_save:
             QMessageBox.information(self, "Sin datos", "No hay datos pendientes. Guarda desde el editor primero.")
             return
         try:
             data = json.loads(self._pending_save)
-            # Use MetaEngine to store the configuration as a project version
             from engine.meta_engine import MetaEngine
             engine = MetaEngine()
             project_name = data.get("name", "Editor")
-            # Create project if not exists, then save version
             project_id = engine.get_or_create_project(project_name)
             version_id = engine.save_version(project_id, json.dumps(data.get("sheetData", [])))
             self._pending_save = None

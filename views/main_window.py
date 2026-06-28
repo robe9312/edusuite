@@ -174,6 +174,19 @@ class MainWindow(QMainWindow):
         if perm_key == "grades" and "grades" in self._view_widgets:
             self._view_widgets["grades"].show_student_panel(student_data)
 
+    def _toggle_editor_fullscreen(self):
+        self._editor_fullscreen = not getattr(self, "_editor_fullscreen", False)
+        if self._editor_fullscreen:
+            self.sidebar.hide()
+            self.header_bar.hide()
+            self.status_bar.hide()
+            self.stack.setStyleSheet(f"background: #1a1c2e;")
+        else:
+            self.sidebar.show()
+            self.header_bar.show()
+            self.status_bar.show()
+            self.stack.setStyleSheet(f"background: {COLOR_BG};")
+
     def _show_command_palette(self):
         dlg = CommandPalette(self)
         dlg.command_selected.connect(self._on_command)
