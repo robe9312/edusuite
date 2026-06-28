@@ -27,6 +27,8 @@ SAVE_FILE = "/tmp/edusuite_save.json"
 
 
 class _Handler(BaseHTTPRequestHandler):
+    engine: object = None
+
     def do_GET(self):
         if self.path == "/data":
             try:
@@ -35,6 +37,22 @@ class _Handler(BaseHTTPRequestHandler):
             except (FileNotFoundError, json.JSONDecodeError):
                 data = "{}"
             self._send_json(data)
+        elif self.path.startswith("/load_template"):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            tid = qs.get("id", [None])[0]
+            if tid and self.engine:
+                ver = self.engine.get_latest_version(int(tid))
+                self._send_json(ver["json_blob"] if ver else "{}")
+            else:
+                self._send_json("{}")
+        elif self.path == "/templates":
+            if self.engine:
+                projects = self.engine.list_projects(active_only=False)
+                out = json.dumps([{"id": p["id"], "name": p["name"]} for p in projects])
+            else:
+                out = "[]"
+            self._send_json(out)
         elif self.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -61,12 +79,23 @@ class _Handler(BaseHTTPRequestHandler):
                 self.end_headers()
 
     def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode("utf-8")
         if self.path == "/save":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length)
             with open(SAVE_FILE, "w") as f:
-                f.write(body.decode("utf-8"))
+                f.write(body)
             self._send_json('{"status":"ok"}')
+        elif self.path == "/save_template" and self.engine:
+            try:
+                data = json.loads(body)
+                name = data.get("name", "Plantilla")
+                pid = self.engine.get_or_create_project(name)
+                self.engine.save_version(pid, json.dumps(data.get("sheetData", [])))
+                self._send_json('{"status":"ok","id":' + str(pid) + '}')
+            except Exception as e:
+                self._send_json('{"status":"error","msg":"' + str(e) + '"}')
+        else:
+            self._send_json('{"status":"error"}')
 
     def _send_json(self, data):
         self.send_response(200)
@@ -188,6 +217,8 @@ class EditorView(QWidget):
         return port
 
     def _start_server(self):
+        from engine.meta_engine import MetaEngine
+        _Handler.engine = MetaEngine()
         srv = HTTPServer(("127.0.0.1", self.port), _Handler)
         self.server = srv
         t = threading.Thread(target=srv.serve_forever, daemon=True)
