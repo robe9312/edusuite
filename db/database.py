@@ -373,6 +373,26 @@ class Database:
             )""")
         except Exception:
             pass
+        try:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN workbook_json TEXT")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN description TEXT DEFAULT ''")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN color TEXT DEFAULT '#5e81f4'")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN type TEXT DEFAULT 'spreadsheet'")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN settings_json TEXT DEFAULT '{}'")
+        except Exception:
+            pass
 
     def _row(self, row):
         return dict(row) if row else None
@@ -1273,13 +1293,25 @@ class Database:
 
     # ── CRUD: Secciones personalizadas ──────────────────────────────────
 
-    def create_custom_section(self, section_key, name, columns_json, icon="📄"):
+    def create_custom_section(self, section_key, name, columns_json, icon="📄", workbook_json=None, description="", color="#5e81f4", type="spreadsheet", settings_json="{}"):
         with self._connect() as conn:
             cur = conn.execute(
-                "INSERT INTO custom_sections (section_key, name, icon, columns_json) VALUES (?, ?, ?, ?)",
-                (section_key, name, icon, columns_json),
+                "INSERT INTO custom_sections (section_key, name, icon, columns_json, workbook_json, description, color, type, settings_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (section_key, name, icon, columns_json, workbook_json, description, color, type, settings_json),
             )
             return cur.lastrowid
+
+    def update_custom_section_meta(self, section_id, name=None, description=None, color=None, type=None, icon=None, settings_json=None):
+        with self._connect() as conn:
+            fields = []
+            values = []
+            for k, v in [("name", name), ("description", description), ("color", color), ("type", type), ("icon", icon), ("settings_json", settings_json)]:
+                if v is not None:
+                    fields.append(f"{k} = ?")
+                    values.append(v)
+            if fields:
+                values.append(section_id)
+                conn.execute(f"UPDATE custom_sections SET {', '.join(fields)} WHERE id = ?", values)
 
     def get_custom_section(self, section_id_or_key):
         with self._connect() as conn:
@@ -1718,8 +1750,11 @@ def get_all_expenses():
 
 # ── CRUD: Secciones personalizadas ──────────────────────────────────────
 
-def create_custom_section(section_key, name, columns_json, icon="📄"):
-    return _db.create_custom_section(section_key, name, columns_json, icon)
+def create_custom_section(section_key, name, columns_json, icon="📄", workbook_json=None, description="", color="#5e81f4", type="spreadsheet", settings_json="{}"):
+    return _db.create_custom_section(section_key, name, columns_json, icon, workbook_json, description, color, type, settings_json)
+
+def update_custom_section_meta(section_id, **kwargs):
+    return _db.update_custom_section_meta(section_id, **kwargs)
 
 
 def get_custom_section(section_id_or_key):

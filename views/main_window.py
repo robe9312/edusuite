@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
+import json
 
 from db.database import init_db
 from config import *
@@ -24,7 +25,8 @@ from views.backup_view import BackupView
 from views.editor_view import EditorView
 from views.settings_view import SettingsView
 from widgets.custom_section_view import CustomSectionView
-from db.database import get_all_custom_sections
+from widgets.workbook_renderer import WorkbookRenderView
+from db.database import get_all_custom_sections, get_custom_section, update_custom_section_meta
 
 SIDEBAR_TO_KEY = {
     "inicio": "dashboard",
@@ -155,11 +157,23 @@ class MainWindow(QMainWindow):
         sections = get_all_custom_sections()
         for sec in sections:
             self.register_custom_section(
-                sec["section_key"], sec["name"], sec.get("icon", "📄")
+                sec["section_key"], sec["name"], sec.get("icon", "📄"), sec.get("workbook_json")
             )
 
-    def register_custom_section(self, section_key, name, icon="📄"):
+    def register_custom_section(self, section_key, name, icon="📄", workbook_json=None):
         if section_key in self._view_widgets:
+            return
+        if workbook_json:
+            sec = get_custom_section(section_key)
+            view = WorkbookRenderView(sec, self)
+            view.edit_requested.connect(self._edit_workbook_section)
+            self._view_widgets[section_key] = view
+            self.stack.addWidget(view)
+            self._view_index[section_key] = self.stack.indexOf(view)
+            self._view_keys.append(section_key)
+            SIDEBAR_TO_KEY[section_key] = section_key
+            PAGE_LABELS_SINGULAR[section_key] = name
+            self.sidebar.add_custom_item(section_key, icon, name)
             return
         view = CustomSectionView(section_key, self)
         self._view_widgets[section_key] = view
@@ -174,6 +188,17 @@ class MainWindow(QMainWindow):
         for key in self._view_keys:
             self._navigate(key)
             return
+
+    def _edit_workbook_section(self, section_key):
+        sec = get_custom_section(section_key)
+        if sec and sec.get("workbook_json"):
+            editor = self._view_widgets.get("editor")
+            if editor:
+                wb = json.loads(sec["workbook_json"])
+                editor.load_workbook(wb)
+                self.sidebar.set_active_page("editor")
+                self.stack.setCurrentWidget(editor)
+                self.header_bar.set_breadcrumb(f"Inicio / Editor - {sec.get('name', '')}")
 
     def _navigate(self, sidebar_key):
         perm_key = SIDEBAR_TO_KEY.get(sidebar_key, sidebar_key)

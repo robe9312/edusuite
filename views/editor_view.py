@@ -26,6 +26,71 @@ DATA_FILE = "/tmp/edusuite_workbook.json"
 SAVE_FILE = "/tmp/edusuite_save.json"
 
 
+def _extract_sheet_data(sheet):
+    """Extract (headers, rows) from a LuckySheet sheet object.
+    Handles both celldata (flat {r,c,v}) and data (2D array) formats.
+    """
+    grid = {}
+    max_r = max_c = 0
+
+    celldata = sheet.get("celldata")
+    if isinstance(celldata, list) and len(celldata) > 0:
+        for cell in celldata:
+            r, c = cell["r"], cell["c"]
+            v = cell.get("v", {})
+            grid[(r, c)] = v
+            if r > max_r: max_r = r
+            if c > max_c: max_c = c
+    else:
+        data = sheet.get("data")
+        if isinstance(data, list) and len(data) > 0:
+            for r, row in enumerate(data):
+                if not isinstance(row, list):
+                    continue
+                for c, cell in enumerate(row):
+                    if cell is not None:
+                        grid[(r, c)] = cell if isinstance(cell, dict) else {"v": cell, "m": str(cell)}
+                        if r > max_r: max_r = r
+                        if c > max_c: max_c = c
+
+    if not grid:
+        return [], []
+
+    headers = []
+    for c in range(max_c + 1):
+        cell = grid.get((0, c))
+        if cell is not None:
+            val = cell.get("m", cell.get("v", ""))
+            headers.append(str(val) if val is not None else "")
+        else:
+            headers.append("")
+
+    while headers and headers[-1] == "":
+        headers.pop()
+    if not headers:
+        return [], []
+
+    rows = []
+    for r in range(1, max_r + 1):
+        row_data = {}
+        has_data = False
+        for j, h in enumerate(headers):
+            cell = grid.get((r, j))
+            if cell is not None:
+                v = cell.get("v")
+                m = cell.get("m", "")
+                val = m if m else (str(v) if v is not None else "")
+                row_data[h] = val
+                if val:
+                    has_data = True
+            else:
+                row_data[h] = ""
+        if has_data:
+            rows.append(row_data)
+
+    return headers, rows
+
+
 class _Handler(BaseHTTPRequestHandler):
     engine: object = None
 
@@ -52,6 +117,11 @@ class _Handler(BaseHTTPRequestHandler):
                 out = json.dumps([{"id": p["id"], "name": p["name"]} for p in projects])
             else:
                 out = "[]"
+            self._send_json(out)
+        elif self.path == "/sections":
+            from db.database import get_all_custom_sections
+            secs = get_all_custom_sections()
+            out = json.dumps([{"id": s["id"], "key": s["section_key"], "name": s["name"], "icon": s.get("icon", "📄"), "columns_count": len(__import__("json").loads(s.get("columns_json", "[]")))} for s in secs])
             self._send_json(out)
         elif self.path == "/":
             self.send_response(200)
@@ -103,7 +173,58 @@ class _Handler(BaseHTTPRequestHandler):
                 sec_id = create_custom_section(sec_key, data.get("name", "Seccion"), columns_json, data.get("icon", "📄"))
                 self._send_json('{"status":"ok","id":' + str(sec_id) + ',"key":"' + sec_key + '"}')
             except Exception as e:
-                self._send_json('{"status":"error","msg":"' + str(e) + '"}')
+                self._send_json('{"status":"error","msg":"' + str(e).replace('"', "'") + '"}')
+        elif self.path == "/save_to_section":
+            try:
+                data = json.loads(body)
+                from db.database import add_custom_section_row
+                row_id = add_custom_section_row(data["section_id"], json.dumps(data.get("row_data", {})))
+                self._send_json('{"status":"ok","row_id":' + str(row_id) + '}')
+            except Exception as e:
+                self._send_json('{"status":"error","msg":"' + str(e).replace('"', "'") + '"}')
+        elif self.path == "/save_as_section":
+            try:
+                data = json.loads(body)
+                from db.database import create_custom_section, add_custom_section_row, get_custom_section, delete_custom_section
+                workbook = data.get("workbook", [])
+                sheet = workbook[0] if isinstance(workbook, list) and len(workbook) > 0 else {}
+
+                headers, rows = _extract_sheet_data(sheet)
+                if not headers:
+                    self._send_json('{"status":"error","msg":"No se pudieron extraer encabezados"}')
+                    return
+
+                workbook_json = json.dumps(workbook) if workbook is not None else None
+                section_id = data.get("section_id")
+                meta_name = data.get("name", "Seccion")
+                meta_desc = data.get("description", "")
+                meta_color = data.get("color", "#5e81f4")
+                meta_type = data.get("type", "spreadsheet")
+                if section_id:
+                    existing = get_custom_section(section_id)
+                    if existing:
+                        delete_custom_section(section_id)
+                        section_id = create_custom_section(existing["section_key"], existing["name"], json.dumps([{"name": h} for h in headers]), existing.get("icon", "📄"), workbook_json, meta_desc, meta_color, meta_type)
+                    else:
+                        self._send_json('{"status":"error","msg":"Seccion no encontrada"}')
+                        return
+                else:
+                    key = data.get("key", "sec_" + str(int(__import__("time").time())))
+                    section_id = create_custom_section(key, meta_name, json.dumps([{"name": h} for h in headers]), "📄", workbook_json, meta_desc, meta_color, meta_type)
+
+                for row in rows:
+                    add_custom_section_row(section_id, json.dumps(row))
+                self._send_json('{"status":"ok","section_id":' + str(section_id) + ',"rows":' + str(len(rows)) + '}')
+            except Exception as e:
+                self._send_json('{"status":"error","msg":"' + str(e).replace('"', "'") + '"}')
+        elif self.path == "/delete_section":
+            try:
+                data = json.loads(body)
+                from db.database import delete_custom_section
+                delete_custom_section(data["section_id"])
+                self._send_json('{"status":"ok"}')
+            except Exception as e:
+                self._send_json('{"status":"error","msg":"' + str(e).replace('"', "'") + '"}')
         else:
             self._send_json('{"status":"error"}')
 
@@ -355,6 +476,21 @@ class EditorView(QWidget):
         except FileNotFoundError:
             pass
 
+
+    def load_workbook(self, workbook_data):
+        if isinstance(workbook_data, list):
+            name = workbook_data[0].get("name", "Editor") if workbook_data else "Editor"
+            data = {"name": name, "sheetData": workbook_data}
+        else:
+            data = workbook_data
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f)
+        try:
+            os.remove(SAVE_FILE)
+        except FileNotFoundError:
+            pass
+        self.web.load(QUrl(f"http://localhost:{self.port}"))
+        self._status("Libro cargado en el editor")
 
     def _toggle_fullscreen(self):
         if hasattr(self, "_ls_window") and self._ls_window:
