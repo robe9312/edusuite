@@ -350,6 +350,30 @@ class Database:
         except Exception:
             pass
 
+        # ── Migration: custom_sections table ────────────────────────────
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS custom_sections (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_key  TEXT NOT NULL UNIQUE,
+                name         TEXT NOT NULL,
+                icon         TEXT NOT NULL DEFAULT '📄',
+                columns_json TEXT NOT NULL DEFAULT '[]',
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            )""")
+        except Exception:
+            pass
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS custom_section_data (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_id   INTEGER NOT NULL REFERENCES custom_sections(id) ON DELETE CASCADE,
+                row_data     TEXT NOT NULL DEFAULT '{}',
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            )""")
+        except Exception:
+            pass
+
     def _row(self, row):
         return dict(row) if row else None
 
