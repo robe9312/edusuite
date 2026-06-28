@@ -91,6 +91,7 @@ class SheetTable(QTableWidget):
 
 class WorkbookRenderView(QWidget):
     edit_requested = Signal(str)
+    delete_requested = Signal(str)
 
     def __init__(self, section, parent=None):
         super().__init__(parent)
@@ -201,5 +202,14 @@ class WorkbookRenderView(QWidget):
         """)
         btn.clicked.connect(lambda: self.edit_requested.emit(sec.get("section_key", "")))
         h.addWidget(btn)
+
+        btn_del = QPushButton("Eliminar")
+        btn_del.setStyleSheet("""
+            QPushButton { padding: 0 12px; height: 34px; border: none;
+                background: transparent; color: #ef4444; font-size: 12px; border-radius: 6px; }
+            QPushButton:hover { background: #2a1a1a; }
+        """)
+        btn_del.clicked.connect(lambda: self.delete_requested.emit(sec.get("section_key", "")))
+        h.addWidget(btn_del)
 
         return bar

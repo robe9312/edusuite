@@ -167,6 +167,7 @@ class MainWindow(QMainWindow):
             sec = get_custom_section(section_key)
             view = WorkbookRenderView(sec, self)
             view.edit_requested.connect(self._edit_workbook_section)
+            view.delete_requested.connect(self._delete_workbook_section)
             self._view_widgets[section_key] = view
             self.stack.addWidget(view)
             self._view_index[section_key] = self.stack.indexOf(view)
@@ -188,6 +189,32 @@ class MainWindow(QMainWindow):
         for key in self._view_keys:
             self._navigate(key)
             return
+
+    def _delete_workbook_section(self, section_key):
+        from PySide6.QtWidgets import QMessageBox
+        sec = get_custom_section(section_key)
+        if not sec:
+            return
+        reply = QMessageBox.question(
+            self, "Eliminar seccion",
+            f"¿Eliminar '{sec.get('name')}' y todos sus datos?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        from db.database import delete_custom_section
+        delete_custom_section(sec["id"])
+        if section_key in self._view_widgets:
+            w = self._view_widgets.pop(section_key)
+            self.stack.removeWidget(w)
+            w.deleteLater()
+        if section_key in self._view_keys:
+            self._view_keys.remove(section_key)
+        if section_key in SIDEBAR_TO_KEY:
+            del SIDEBAR_TO_KEY[section_key]
+        if section_key in PAGE_LABELS_SINGULAR:
+            del PAGE_LABELS_SINGULAR[section_key]
+        self._show_first_available()
 
     def _edit_workbook_section(self, section_key):
         sec = get_custom_section(section_key)
