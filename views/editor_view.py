@@ -94,6 +94,16 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json('{"status":"ok","id":' + str(pid) + '}')
             except Exception as e:
                 self._send_json('{"status":"error","msg":"' + str(e) + '"}')
+        elif self.path == "/create_section":
+            try:
+                data = json.loads(body)
+                from db.database import create_custom_section
+                sec_key = data.get("key", "sec_" + str(int(__import__("time").time())))
+                columns_json = json.dumps(data.get("columns", []))
+                sec_id = create_custom_section(sec_key, data.get("name", "Seccion"), columns_json, data.get("icon", "📄"))
+                self._send_json('{"status":"ok","id":' + str(sec_id) + ',"key":"' + sec_key + '"}')
+            except Exception as e:
+                self._send_json('{"status":"error","msg":"' + str(e) + '"}')
         else:
             self._send_json('{"status":"error"}')
 

@@ -313,6 +313,28 @@ class Database:
                 created_at   TEXT DEFAULT (datetime('now')),
                 updated_at   TEXT DEFAULT (datetime('now'))
             );
+
+            -- Custom sections (user-created views)
+            CREATE TABLE IF NOT EXISTS custom_sections (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_key  TEXT NOT NULL UNIQUE,
+                name         TEXT NOT NULL,
+                icon         TEXT NOT NULL DEFAULT '\U0001f4c4',
+                columns_json TEXT NOT NULL DEFAULT '[]',
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS custom_section_data (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                section_id   INTEGER NOT NULL REFERENCES custom_sections(id) ON DELETE CASCADE,
+                row_data     TEXT NOT NULL DEFAULT '{}',
+                created_at   TEXT DEFAULT (datetime('now')),
+                updated_at   TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TRIGGER IF NOT EXISTS trg_custom_sections_updated AFTER UPDATE ON custom_sections FOR EACH ROW BEGIN UPDATE custom_sections SET updated_at = datetime('now') WHERE id = OLD.id; END;
+            CREATE TRIGGER IF NOT EXISTS trg_custom_data_updated AFTER UPDATE ON custom_section_data FOR EACH ROW BEGIN UPDATE custom_section_data SET updated_at = datetime('now') WHERE id = OLD.id; END;
 '''
         # ── Migration: add new columns if they don't exist ───────────────────────
         try:
@@ -1225,6 +1247,61 @@ class Database:
                 "SELECT * FROM expenses ORDER BY date DESC, id DESC"
             ).fetchall()]
 
+    # ── CRUD: Secciones personalizadas ──────────────────────────────────
+
+    def create_custom_section(self, section_key, name, columns_json, icon="📄"):
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO custom_sections (section_key, name, icon, columns_json) VALUES (?, ?, ?, ?)",
+                (section_key, name, icon, columns_json),
+            )
+            return cur.lastrowid
+
+    def get_custom_section(self, section_id_or_key):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM custom_sections WHERE id = ? OR section_key = ?",
+                (section_id_or_key, section_id_or_key),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_all_custom_sections(self):
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM custom_sections ORDER BY created_at ASC"
+            ).fetchall()]
+
+    def delete_custom_section(self, section_id):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM custom_section_data WHERE section_id = ?", (section_id,))
+            conn.execute("DELETE FROM custom_sections WHERE id = ?", (section_id,))
+
+    def add_custom_section_row(self, section_id, row_data_json):
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO custom_section_data (section_id, row_data) VALUES (?, ?)",
+                (section_id, row_data_json),
+            )
+            return cur.lastrowid
+
+    def get_custom_section_rows(self, section_id):
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM custom_section_data WHERE section_id = ? ORDER BY id ASC",
+                (section_id,),
+            ).fetchall()]
+
+    def update_custom_section_row(self, row_id, row_data_json):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE custom_section_data SET row_data = ?, updated_at = datetime('now') WHERE id = ?",
+                (row_data_json, row_id),
+            )
+
+    def delete_custom_section_row(self, row_id):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM custom_section_data WHERE id = ?", (row_id,))
+
 
 # ── Singleton ──────────────────────────────────────────────────────────
 
@@ -1613,3 +1690,37 @@ def get_expense(expense_id):
 
 def get_all_expenses():
     return _db.get_all_expenses()
+
+
+# ── CRUD: Secciones personalizadas ──────────────────────────────────────
+
+def create_custom_section(section_key, name, columns_json, icon="📄"):
+    return _db.create_custom_section(section_key, name, columns_json, icon)
+
+
+def get_custom_section(section_id_or_key):
+    return _db.get_custom_section(section_id_or_key)
+
+
+def get_all_custom_sections():
+    return _db.get_all_custom_sections()
+
+
+def delete_custom_section(section_id):
+    return _db.delete_custom_section(section_id)
+
+
+def add_custom_section_row(section_id, row_data_json):
+    return _db.add_custom_section_row(section_id, row_data_json)
+
+
+def get_custom_section_rows(section_id):
+    return _db.get_custom_section_rows(section_id)
+
+
+def update_custom_section_row(row_id, row_data_json):
+    return _db.update_custom_section_row(row_id, row_data_json)
+
+
+def delete_custom_section_row(row_id):
+    return _db.delete_custom_section_row(row_id)

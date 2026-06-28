@@ -125,6 +125,13 @@ class CompactSidebar(QWidget):
             btn.set_active(k == key)
         self.page_changed.emit(key)
 
+    def add_custom_item(self, key, icon, label):
+        btn = SidebarButton(icon, label, collapsed=True)
+        btn.clicked.connect(lambda _, k=key: self._navigate(k))
+        self._buttons.append((key, btn))
+        self.layout().addWidget(btn)
+        NAV_ITEMS.append((key, icon, label))
+
     def set_active_page(self, key):
         self._current_page = key
         for k, btn in self._buttons:

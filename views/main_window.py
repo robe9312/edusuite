@@ -23,6 +23,8 @@ from views.subjects_view import SubjectsView
 from views.backup_view import BackupView
 from views.editor_view import EditorView
 from views.settings_view import SettingsView
+from widgets.custom_section_view import CustomSectionView
+from db.database import get_all_custom_sections
 
 SIDEBAR_TO_KEY = {
     "inicio": "dashboard",
@@ -107,6 +109,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.status_bar)
 
         self._init_views()
+        self._load_custom_sections()
         self._setup_shortcuts()
         self._setup_status()
 
@@ -147,6 +150,25 @@ class MainWindow(QMainWindow):
         w = self.stack.currentWidget()
         if hasattr(w, "on_escape"):
             w.on_escape()
+
+    def _load_custom_sections(self):
+        sections = get_all_custom_sections()
+        for sec in sections:
+            self.register_custom_section(
+                sec["section_key"], sec["name"], sec.get("icon", "📄")
+            )
+
+    def register_custom_section(self, section_key, name, icon="📄"):
+        if section_key in self._view_widgets:
+            return
+        view = CustomSectionView(section_key, self)
+        self._view_widgets[section_key] = view
+        self.stack.addWidget(view)
+        self._view_index[section_key] = self.stack.indexOf(view)
+        self._view_keys.append(section_key)
+        SIDEBAR_TO_KEY[section_key] = section_key
+        PAGE_LABELS_SINGULAR[section_key] = name
+        self.sidebar.add_custom_item(section_key, icon, name)
 
     def _show_first_available(self):
         for key in self._view_keys:

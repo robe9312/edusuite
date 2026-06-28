@@ -42,6 +42,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1c2e; }
   <button class="btn-import" onclick="document.getElementById('fileInput').click()">Importar Excel</button>
   <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="importExcel(event)">
   <button class="btn-primary" onclick="saveAsTemplate()">Guardar como plantilla</button>
+  <button class="btn-primary" style="background:#8b5cf6;" onclick="createSection()">+ Crear sección</button>
   <div class="dropdown" id="templateDropdown">
     <button class="btn-outline" onclick="toggleTemplates()">Nueva sección ▾</button>
     <div class="dropdown-content" id="templateList"></div>
@@ -208,6 +209,39 @@ function loadTemplate(templateId) {
             }
         })
         .catch(function(e) { setStatus('Error: ' + e.message); });
+}
+
+function createSection() {
+    var name = prompt('Nombre de la nueva seccion:', '');
+    if (!name) return;
+    setStatus('Creando seccion...');
+    try {
+        var file = luckysheet.getluckysheetfile();
+        var firstSheet = file.data && file.data[0];
+        var headers = [];
+        if (firstSheet && firstSheet.celldata) {
+            var row0 = firstSheet.celldata.filter(function(c) { return c.r === 0; });
+            row0.sort(function(a, b) { return a.c - b.c; });
+            row0.forEach(function(c) { headers.push({ name: String(c.v.v || c.v.m || 'Col' + (c.c+1)) }); });
+        }
+        if (headers.length === 0) {
+            headers = [{ name: 'Columna 1' }];
+        }
+        var key = 'sec_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        var payload = JSON.stringify({ name: name, key: key, columns: headers, icon: '📄' });
+        fetch('/create_section', { method: 'POST', body: payload })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.status === 'ok') {
+                    setStatus('Seccion creada: ' + name + ' (recarga la app)');
+                } else {
+                    setStatus('Error: ' + (d.msg || 'desconocido'));
+                }
+            })
+            .catch(function(e) { setStatus('Error: ' + e.message); });
+    } catch(e) {
+        setStatus('Error: ' + e.message);
+    }
 }
 
 function setStatus(msg) {
