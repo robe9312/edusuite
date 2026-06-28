@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
         self._view_widgets = {}
         self._view_keys = []
         self._view_index = {}
-        self._editor_fullscreen = False
+
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -174,19 +174,6 @@ class MainWindow(QMainWindow):
         perm_key = SIDEBAR_TO_KEY.get(sidebar_key, sidebar_key)
         if perm_key == "grades" and "grades" in self._view_widgets:
             self._view_widgets["grades"].show_student_panel(student_data)
-
-    def _toggle_editor_fullscreen(self):
-        self._editor_fullscreen = not getattr(self, "_editor_fullscreen", False)
-        if self._editor_fullscreen:
-            self.sidebar.hide()
-            self.header_bar.hide()
-            self.status_bar.hide()
-            self.stack.setStyleSheet(f"background: #1a1c2e;")
-        else:
-            self.sidebar.show()
-            self.header_bar.show()
-            self.status_bar.show()
-            self.stack.setStyleSheet(f"background: {COLOR_BG};")
 
     def _show_command_palette(self):
         dlg = CommandPalette(self)

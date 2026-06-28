@@ -106,6 +106,7 @@ class EditorView(QWidget):
         self.web.setStyleSheet("border: none;")
         layout.addWidget(self.web)
 
+        self._ls_window = None
         self._watch = QTimer()
         self._watch.timeout.connect(self._check_save)
         self._watch.start(1500)
@@ -315,15 +316,23 @@ class EditorView(QWidget):
 
 
     def _toggle_fullscreen(self):
-        mw = self.window()
-        if not hasattr(mw, "_toggle_editor_fullscreen"):
+        if hasattr(self, "_ls_window") and self._ls_window:
+            self._ls_window.close()
+            self._ls_window = None
             return
-        mw._toggle_editor_fullscreen()
+        from widgets.luckysheet_window import LuckySheetWindow
+        self._ls_window = LuckySheetWindow(self.port, self)
+        self._ls_window.showMaximized()
+        self._btn_fullscreen.setText("⛶ Cerrar ventana")
 
     def on_escape(self):
-        mw = self.window()
-        if hasattr(mw, "_toggle_editor_fullscreen") and getattr(mw, "_editor_fullscreen", False):
-            mw._toggle_editor_fullscreen()
+        if hasattr(self, "_ls_window") and self._ls_window:
+            self._ls_window.close()
+            self._ls_window = None
+
+    def on_luckysheet_closed(self):
+        self._ls_window = None
+        self._btn_fullscreen.setText("⛶ Pantalla completa")
 
     def import_save(self):
         if not hasattr(self, "_pending_save") or not self._pending_save:
