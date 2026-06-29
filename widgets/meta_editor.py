@@ -32,8 +32,9 @@ def _active_area(grid):
     max_r = max_c = -1
     for r in range(grid.row_count()):
         for c in range(grid.col_count()):
-            cell = grid.get_cell(r, c)
-            if cell and cell.display and cell.display.strip():
+            cell = grid.cell(r, c)
+            val = cell.display if hasattr(cell, 'display') else str(cell)
+            if val and val.strip():
                 if r > max_r: max_r = r
                 if c > max_c: max_c = c
     if max_r < 0:
