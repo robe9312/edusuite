@@ -1,13 +1,14 @@
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget, QLabel,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
 import json
 
-from db.database import init_db, get_all_custom_sections, get_custom_section
+from db.database import init_db, get_all_custom_sections, get_custom_section, archive_custom_section
 from config import *
 from session import current_user, has_permission, logout
+from logs.logger import log as log_msg
 
 from services import ServiceRegistry
 
@@ -29,7 +30,7 @@ from views.settings_view import SettingsView
 from widgets.custom_section_view import CustomSectionView
 from widgets.workbook_renderer import WorkbookRenderView
 
-SIDEBAR_TO_KEY = {
+SECTION_TO_VIEW_KEY = {
     "inicio": "inicio",
     "dashboard": "dashboard",
     "notas": "grades",
@@ -38,7 +39,6 @@ SIDEBAR_TO_KEY = {
     "asignaturas": "subjects",
     "matricula": "enrollment",
     "gastos": "expenses",
-    "backup": "backup",
     "configuracion": "settings",
 }
 
@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
         self._view_widgets = {}
         self._view_keys = []
         self._view_index = {}
-
+        self._view_section_map = {}
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -111,7 +111,7 @@ class MainWindow(QMainWindow):
 
         self._init_services()
         self._init_views()
-        self._load_custom_sections()
+        self._init_section_views()
         self._setup_shortcuts()
         self._setup_status()
 
@@ -132,6 +132,37 @@ class MainWindow(QMainWindow):
                 self.stack.addWidget(view)
                 self._view_index[perm_key] = self.stack.indexOf(view)
                 self._view_keys.append(perm_key)
+
+    def _init_section_views(self):
+        sections = get_all_custom_sections(visible_only=True)
+        for sec in sections:
+            sk = sec["section_key"]
+            if sk in self._view_widgets:
+                continue
+            view_key = SECTION_TO_VIEW_KEY.get(sk, sk)
+            if view_key in VIEW_CLASSES:
+                if view_key not in self._view_widgets and has_permission(view_key):
+                    view = VIEW_CLASSES[view_key](self)
+                    self._view_widgets[view_key] = view
+                    self.stack.addWidget(view)
+                    self._view_index[view_key] = self.stack.indexOf(view)
+                    self._view_keys.append(view_key)
+            else:
+                self._register_section_view(sec)
+
+    def _register_section_view(self, sec):
+        sk = sec["section_key"]
+        if sk in self._view_widgets:
+            return
+        log_msg(f"REGISTER_VIEW section_key={sk} name={sec.get('name')} doc_id={sec.get('document_id')}")
+        view = WorkbookRenderView(sec, None, self)
+        view.edit_requested.connect(self._edit_workbook_section)
+        view.delete_requested.connect(self._delete_workbook_section)
+        self._view_widgets[sk] = view
+        self.stack.addWidget(view)
+        self._view_index[sk] = self.stack.indexOf(view)
+        self._view_keys.append(sk)
+        self._view_section_map[sk] = sec.get("id")
 
     def _setup_status(self):
         user = current_user()
@@ -160,38 +191,6 @@ class MainWindow(QMainWindow):
         if hasattr(w, "on_escape"):
             w.on_escape()
 
-    def _load_custom_sections(self):
-        sections = get_all_custom_sections()
-        for sec in sections:
-            self.register_custom_section(
-                sec["section_key"], sec["name"], sec.get("icon", "📄"), sec.get("workbook_json")
-            )
-
-    def register_custom_section(self, section_key, name, icon="📄", workbook_json=None):
-        if section_key in self._view_widgets:
-            return
-        if workbook_json:
-            sec = get_custom_section(section_key)
-            view = WorkbookRenderView(sec, self)
-            view.edit_requested.connect(self._edit_workbook_section)
-            view.delete_requested.connect(self._delete_workbook_section)
-            self._view_widgets[section_key] = view
-            self.stack.addWidget(view)
-            self._view_index[section_key] = self.stack.indexOf(view)
-            self._view_keys.append(section_key)
-            SIDEBAR_TO_KEY[section_key] = section_key
-            PAGE_LABELS_SINGULAR[section_key] = name
-            self.sidebar.add_custom_item(section_key, icon, name)
-            return
-        view = CustomSectionView(section_key, self)
-        self._view_widgets[section_key] = view
-        self.stack.addWidget(view)
-        self._view_index[section_key] = self.stack.indexOf(view)
-        self._view_keys.append(section_key)
-        SIDEBAR_TO_KEY[section_key] = section_key
-        PAGE_LABELS_SINGULAR[section_key] = name
-        self.sidebar.add_custom_item(section_key, icon, name)
-
     def _show_first_available(self):
         for preferred in ("inicio", "dashboard"):
             if preferred in self._view_widgets:
@@ -207,43 +206,38 @@ class MainWindow(QMainWindow):
         if not sec:
             return
         reply = QMessageBox.question(
-            self, "Eliminar seccion",
-            f"¿Eliminar '{sec.get('name')}' y todos sus datos?",
+            self, "Archivar sección",
+            f"¿Archivar '{sec.get('name')}'? La sección se ocultará del panel lateral y podrá restaurarse.",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
-        from db.database import delete_custom_section
-        delete_custom_section(sec["id"])
+        archive_custom_section(sec["id"])
         if section_key in self._view_widgets:
             w = self._view_widgets.pop(section_key)
             self.stack.removeWidget(w)
             w.deleteLater()
         if section_key in self._view_keys:
             self._view_keys.remove(section_key)
-        if section_key in SIDEBAR_TO_KEY:
-            del SIDEBAR_TO_KEY[section_key]
-        if section_key in PAGE_LABELS_SINGULAR:
-            del PAGE_LABELS_SINGULAR[section_key]
+        self.sidebar.refresh()
         self._show_first_available()
 
     def _edit_workbook_section(self, section_key):
-        from db.database import get_custom_section
         sec = get_custom_section(section_key)
         if not sec:
             return
         from widgets.luckysheet_window import LuckySheetWindow
-        from views.editor_view import _write_workbook_data
-        _write_workbook_data(sec.get("workbook_json", "[]"), sec.get("name", "Sección"))
+        from views.editor_view import _write_workbook_data, _Handler
+        _write_workbook_data(sec.get("workbook_json", "[]"), sec.get("name", "Sección"), section_id=sec.get("id"))
         import socket
         s = socket.socket()
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
         s.close()
         from http.server import HTTPServer
-        from views.editor_view import _Handler
         from engine.meta_engine import MetaEngine
         _Handler.engine = MetaEngine()
+        _Handler.section_id = sec["id"]
         srv = HTTPServer(("127.0.0.1", port), _Handler)
         import threading
         t = threading.Thread(target=srv.serve_forever, daemon=True)
@@ -251,14 +245,42 @@ class MainWindow(QMainWindow):
         self._ls_window = LuckySheetWindow(port, self)
         self._ls_window.showMaximized()
 
-    def _navigate(self, sidebar_key):
-        perm_key = SIDEBAR_TO_KEY.get(sidebar_key, sidebar_key)
-        if perm_key not in self._view_widgets:
-            return
-        self.sidebar.set_active_page(sidebar_key)
-        w = self._view_widgets[perm_key]
+    def on_luckysheet_closed(self):
+        log_msg("LUCKY_CLOSED refreshing sidebar + views")
+        self.sidebar.refresh()
+        sections = get_all_custom_sections(visible_only=True)
+        for sec in sections:
+            sk = sec["section_key"]
+            view_key = SECTION_TO_VIEW_KEY.get(sk, sk)
+            if view_key not in self._view_widgets:
+                self._register_section_view(sec)
+
+    def _navigate(self, section_key):
+        view_key = SECTION_TO_VIEW_KEY.get(section_key, section_key)
+        if view_key not in self._view_widgets:
+            if section_key not in self._view_widgets:
+                return
+            view_key = section_key
+        self.sidebar.set_active_page(section_key)
+
+        w = self._view_widgets[view_key]
+        sec = get_custom_section(section_key)
+        log_msg(f"NAVIGATE section_key={section_key} view_type={type(w).__name__} doc_id={sec.get('document_id') if sec else None}")
+        if isinstance(w, CustomSectionView):
+            from widgets.workbook_renderer import WorkbookRenderView
+            new_view = WorkbookRenderView(sec, None, self)
+            new_view.edit_requested.connect(self._edit_workbook_section)
+            new_view.delete_requested.connect(self._delete_workbook_section)
+            idx = self._view_index[view_key]
+            self.stack.removeWidget(w)
+            w.deleteLater()
+            self.stack.insertWidget(idx, new_view)
+            self._view_widgets[view_key] = new_view
+            self._view_index[view_key] = self.stack.indexOf(new_view)
+            w = new_view
+
         self.stack.setCurrentWidget(w)
-        label = PAGE_LABELS_SINGULAR.get(sidebar_key, perm_key)
+        label = (sec.get("name") if sec else None) or PAGE_LABELS_SINGULAR.get(view_key, view_key)
         self.header_bar.set_breadcrumb(f"Inicio / {label}")
         if hasattr(w, "refresh"):
             w.refresh()
@@ -268,9 +290,9 @@ class MainWindow(QMainWindow):
             self._view_widgets["dashboard"].refresh()
 
     def show_student_in_panel(self, student_data):
-        sidebar_key = self.sidebar._current_page
-        perm_key = SIDEBAR_TO_KEY.get(sidebar_key, sidebar_key)
-        if perm_key == "grades" and "grades" in self._view_widgets:
+        current = self.sidebar._current_page
+        view_key = SECTION_TO_VIEW_KEY.get(current, current)
+        if view_key == "grades" and "grades" in self._view_widgets:
             self._view_widgets["grades"].show_student_panel(student_data)
 
     def _show_command_palette(self):

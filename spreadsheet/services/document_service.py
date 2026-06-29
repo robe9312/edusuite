@@ -18,14 +18,18 @@ class DocumentService:
 
     def open(self, doc_id: int) -> bool:
         from db.database import get_document, get_latest_workbook
+        from logs.logger import log as log_msg
         doc = get_document(doc_id)
         if not doc:
+            log_msg(f"DOC_OPEN doc_id={doc_id} NOT_FOUND")
             return False
 
         self._current_id = doc["id"]
         self._current_meta = dict(doc)
 
         wb_row = get_latest_workbook(doc_id)
+        has_wb = bool(wb_row and wb_row.get("workbook_json"))
+        log_msg(f"DOC_OPEN doc_id={doc_id} name={doc.get('name')} has_workbook={has_wb}")
         wb_data = (wb_row.get("workbook_json") or "[]") if wb_row else "[]"
         if isinstance(wb_data, str):
             wb_data = json.loads(wb_data)
@@ -39,10 +43,12 @@ class DocumentService:
 
         grid = self._adapter.sheet(0)
         if grid is None:
+            log_msg(f"DOC_OPEN doc_id={doc_id} NO_SHEET")
             return False
 
         source = MemoryDataSource(grid.row_count(), grid.col_count())
         self._engine = SpreadsheetEngine(grid, source)
+        log_msg(f"DOC_OPEN doc_id={doc_id} OK grid={grid.row_count()}x{grid.col_count()}")
         return True
 
     def create(self, name: str, category_id: int = 6, description: str = "",

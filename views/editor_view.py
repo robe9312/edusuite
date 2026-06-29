@@ -1,5 +1,6 @@
 import os, json, uuid, threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from logs.logger import log as log_msg
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtWidgets import (
@@ -19,9 +20,10 @@ from config import *
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "luckysheet")
 DATA_FILE = "/tmp/edusuite_workbook.json"
 SAVE_FILE = "/tmp/edusuite_save.json"
+SECTION_ID_FILE = "/tmp/edusuite_section_id.txt"
 
 
-def _write_workbook_data(workbook_json, name="Sección"):
+def _write_workbook_data(workbook_json, name="Sección", section_id=None):
     import json
     data = json.loads(workbook_json) if isinstance(workbook_json, str) else workbook_json
     if isinstance(data, list):
@@ -30,6 +32,14 @@ def _write_workbook_data(workbook_json, name="Sección"):
         payload = {"sheetData": [], "name": name}
     with open(DATA_FILE, "w") as f:
         json.dump(payload, f)
+    if section_id is not None:
+        with open(SECTION_ID_FILE, "w") as f:
+            f.write(str(section_id))
+    else:
+        try:
+            os.remove(SECTION_ID_FILE)
+        except FileNotFoundError:
+            pass
     try:
         os.remove(SAVE_FILE)
     except FileNotFoundError:
@@ -102,16 +112,25 @@ def _extract_sheet_data(sheet):
 
 
 class _Handler(BaseHTTPRequestHandler):
-    engine: object = None
+    engine = None
+    section_id = None
+    _save_timer = None
 
     def do_GET(self):
         if self.path == "/data":
             try:
                 with open(DATA_FILE, "r") as f:
-                    data = f.read()
+                    raw = f.read()
+                data = json.loads(raw)
+                if not isinstance(data, dict):
+                    data = {}
             except (FileNotFoundError, json.JSONDecodeError):
-                data = "{}"
-            self._send_json(data)
+                data = {}
+            if "sheetData" not in data:
+                data["sheetData"] = []
+            if "name" not in data:
+                data["name"] = "Editor"
+            self._send_json(json.dumps(data))
         elif self.path.startswith("/load_template"):
             from urllib.parse import urlparse, parse_qs
             qs = parse_qs(urlparse(self.path).query)
@@ -164,6 +183,33 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/save":
             with open(SAVE_FILE, "w") as f:
                 f.write(body)
+            try:
+                with open(SECTION_ID_FILE, "r") as f:
+                    sid = f.read().strip()
+                if sid:
+                    from db.database import update_section_workbook, get_custom_section, save_document_version
+                    data = json.loads(body)
+                    sheet_data = data.get("sheetData", data.get("sheets", []))
+                    wb_json = json.dumps(sheet_data)
+                    log_msg(f"SAVE section_id={sid} wb_size={len(sheet_data)} sheets")
+                    update_section_workbook(int(sid), wb_json)
+                    sec = get_custom_section(int(sid))
+                    if sec:
+                        doc_id = sec.get("document_id")
+                        log_msg(f"SAVE sec_name={sec.get('name')} doc_id={doc_id}")
+                        if doc_id:
+                            save_document_version(doc_id, wb_json, comment="Editado desde editor")
+                            log_msg(f"SAVE version saved doc_id={doc_id}")
+                        else:
+                            from db.database import create_document
+                            doc_id = create_document(name=sec.get("name", "Sección"))
+                            save_document_version(doc_id, wb_json, comment="Versión inicial")
+                            from db.database import update_custom_section_meta
+                            update_custom_section_meta(int(sid), document_id=doc_id)
+                            log_msg(f"SAVE new_doc created doc_id={doc_id}")
+            except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+                log_msg(f"SAVE_ERROR {e}")
+                pass
             self._send_json('{"status":"ok"}')
         elif self.path == "/save_template" and self.engine:
             try:
@@ -357,6 +403,8 @@ class EditorView(QWidget):
         self._current_doc_id = None
 
     def load_workbook(self, workbook_data, doc_id=None):
+        if workbook_data is None:
+            workbook_data = {"sheetData": [], "name": "Editor"}
         if isinstance(workbook_data, list):
             name = workbook_data[0].get("name", "Editor") if workbook_data else "Editor"
             data = {"name": name, "sheetData": workbook_data}

@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.db
+*.db-shm
+*.db-wal
 *.xlsx
 settings.json
 .DS_Store
+logs/
+tests/

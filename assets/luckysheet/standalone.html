@@ -36,6 +36,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1c2e; }
   <span class="savebar-title">EduSuite Editor — Plantillas</span>
   <span class="spacer"></span>
   <span id="status"></span>
+  <button class="btn-save" onclick="doSave()">Guardar</button>
 </div>
 <div id="luckysheet"></div>
 
@@ -44,9 +45,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1c2e; }
 <script>
 var gridKey = 'ls-' + Date.now();
 var _autoSaveTimer = null;
+var _saving = false;
 
 function loadSheet(data) {
-    if (data && data.name) document.querySelector('.title').textContent = data.name;
+    data = data || { sheetData: [], name: 'Editor' };
+    var titleEl = document.querySelector('.savebar-title');
+    if (data.name && titleEl) titleEl.textContent = data.name;
     var opts = {
         container: 'luckysheet',
         title: data.name || 'Editor',
@@ -74,30 +78,32 @@ function getSheetData() {
     return { gridKey: file.gridKey, title: file.title || 'Editor', sheets: file.data };
 }
 
-function getFirstSheetHeaders() {
-    var file = luckysheet.getluckysheetfile();
-    var first = file.data && file.data[0];
-    if (!first || !first.celldata) return [{ name: 'Columna 1' }];
-    var row0 = first.celldata.filter(function(c) { return c.r === 0; });
-    row0.sort(function(a, b) { return a.c - b.c; });
-    if (row0.length === 0) return [{ name: 'Columna 1' }];
-    return row0.map(function(c) { return { name: String(c.v.v || c.v.m || 'Col' + (c.c+1)) }; });
+function doSave() {
+    if (_saving) return;
+    _saving = true;
+    setStatus('Guardando...');
+    var sd = getSheetData();
+    fetch('/save', {
+        method: 'POST',
+        body: JSON.stringify({ gridKey: sd.gridKey, name: sd.title, sheetData: sd.sheets })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        setStatus('Guardado');
+        _saving = false;
+    }).catch(function() {
+        setStatus('Error al guardar');
+        _saving = false;
+    });
 }
 
 function autoSave() {
-    try {
-        var sd = getSheetData();
-        fetch('/save', { method: 'POST', body: JSON.stringify({ gridKey: sd.gridKey, name: sd.title, sheetData: sd.sheets }) })
-            .then(function(r) { return r.json(); }).then(function(d) {}).catch(function() {});
-    } catch(e) {}
-}
-
-function autoSave() {
-    try {
-        var sd = getSheetData();
-        fetch('/save', { method: 'POST', body: JSON.stringify({ gridKey: sd.gridKey, name: sd.title, sheetData: sd.sheets }) })
-            .then(function(r) { return r.json(); }).then(function(d) {}).catch(function() {});
-    } catch(e) {}
+    if (_saving) return;
+    var sd = getSheetData();
+    fetch('/save', {
+        method: 'POST',
+        body: JSON.stringify({ gridKey: sd.gridKey, name: sd.title, sheetData: sd.sheets })
+    }).then(function(r) { return r.json(); }).then(function() {
+        setStatus('Autoguardado');
+    }).catch(function() {});
 }
 
 function startAutoSave() {
@@ -107,7 +113,7 @@ function startAutoSave() {
 
 function setStatus(msg) {
     document.getElementById('status').textContent = msg;
-    if (msg) setTimeout(function() { setStatus(''); }, 4000);
+    if (msg) setTimeout(function() { setStatus(''); }, 3000);
 }
 
 fetch('/data').then(function(r) { return r.json(); }).then(function(d) {

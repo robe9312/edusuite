@@ -91,6 +91,7 @@ class Database:
         self._seed_roles()
         self._seed_admin()
         self._seed_document_categories()
+        self._seed_sections()
         self._migrate_documents()
 
     def _migrate_students(self, conn):
@@ -504,6 +505,16 @@ class Database:
             "ALTER TABLE custom_sections ADD COLUMN workbook_json TEXT")
         _ensure_col("custom_sections", "settings_json",
             "ALTER TABLE custom_sections ADD COLUMN settings_json TEXT DEFAULT '{}'")
+        _ensure_col("custom_sections", "editable",
+            "ALTER TABLE custom_sections ADD COLUMN editable INTEGER DEFAULT 1")
+        _ensure_col("custom_sections", "deletable",
+            "ALTER TABLE custom_sections ADD COLUMN deletable INTEGER DEFAULT 1")
+        _ensure_col("custom_sections", "visible",
+            "ALTER TABLE custom_sections ADD COLUMN visible INTEGER DEFAULT 1")
+        _ensure_col("custom_sections", "sort_order",
+            "ALTER TABLE custom_sections ADD COLUMN sort_order INTEGER DEFAULT 0")
+        _ensure_col("custom_sections", "document_id",
+            "ALTER TABLE custom_sections ADD COLUMN document_id INTEGER REFERENCES documents(id)")
 
     def _row(self, row):
         return dict(row) if row else None
@@ -1516,19 +1527,19 @@ class Database:
 
     # ── CRUD: Secciones personalizadas ──────────────────────────────────
 
-    def create_custom_section(self, section_key, name, columns_json, icon="📄", workbook_json=None, description="", color="#5e81f4", type="spreadsheet", settings_json="{}"):
+    def create_custom_section(self, section_key, name, columns_json, icon="📄", workbook_json=None, description="", color="#5e81f4", type="spreadsheet", settings_json="{}", sort_order=0, document_id=None):
         with self._connect() as conn:
             cur = conn.execute(
-                "INSERT INTO custom_sections (section_key, name, icon, columns_json, workbook_json, description, color, type, settings_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (section_key, name, icon, columns_json, workbook_json, description, color, type, settings_json),
+                "INSERT INTO custom_sections (section_key, name, icon, columns_json, workbook_json, description, color, type, settings_json, sort_order, document_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (section_key, name, icon, columns_json, workbook_json, description, color, type, settings_json, sort_order, document_id),
             )
             return cur.lastrowid
 
-    def update_custom_section_meta(self, section_id, name=None, description=None, color=None, type=None, icon=None, settings_json=None):
+    def update_custom_section_meta(self, section_id, name=None, description=None, color=None, type=None, icon=None, settings_json=None, editable=None, deletable=None, visible=None, sort_order=None, document_id=None):
         with self._connect() as conn:
             fields = []
             values = []
-            for k, v in [("name", name), ("description", description), ("color", color), ("type", type), ("icon", icon), ("settings_json", settings_json)]:
+            for k, v in [("name", name), ("description", description), ("color", color), ("type", type), ("icon", icon), ("settings_json", settings_json), ("editable", editable), ("deletable", deletable), ("visible", visible), ("sort_order", sort_order), ("document_id", document_id)]:
                 if v is not None:
                     fields.append(f"{k} = ?")
                     values.append(v)
@@ -1544,16 +1555,29 @@ class Database:
             ).fetchone()
             return dict(row) if row else None
 
-    def get_all_custom_sections(self):
+    def get_all_custom_sections(self, visible_only=False):
         with self._connect() as conn:
-            return [dict(r) for r in conn.execute(
-                "SELECT * FROM custom_sections ORDER BY created_at ASC"
-            ).fetchall()]
+            sql = "SELECT * FROM custom_sections"
+            if visible_only:
+                sql += " WHERE visible = 1"
+            sql += " ORDER BY sort_order ASC"
+            return [dict(r) for r in conn.execute(sql).fetchall()]
 
     def delete_custom_section(self, section_id):
         with self._connect() as conn:
             conn.execute("DELETE FROM custom_section_data WHERE section_id = ?", (section_id,))
             conn.execute("DELETE FROM custom_sections WHERE id = ?", (section_id,))
+
+    def archive_custom_section(self, section_id):
+        with self._connect() as conn:
+            section = conn.execute("SELECT document_id FROM custom_sections WHERE id = ?", (section_id,)).fetchone()
+            if section and section["document_id"]:
+                conn.execute("UPDATE documents SET is_archived = 1 WHERE id = ?", (section["document_id"],))
+            conn.execute("UPDATE custom_sections SET visible = 0 WHERE id = ?", (section_id,))
+
+    def update_section_workbook(self, section_id, workbook_json):
+        with self._connect() as conn:
+            conn.execute("UPDATE custom_sections SET workbook_json = ? WHERE id = ?", (workbook_json, section_id))
 
     def add_custom_section_row(self, section_id, row_data_json):
         with self._connect() as conn:
@@ -1599,6 +1623,56 @@ class Database:
                     "INSERT OR IGNORE INTO document_categories (name, icon, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?)",
                     (name, icon, color, order, system),
                 )
+
+    # ── System Sections ────────────────────────────────────────────────────
+
+    SYSTEM_SECTIONS = [
+        ("inicio",              "Inicio",             "\U0001f3e0", 0,  False, False, True, "internal"),
+        ("dashboard",           "Dashboard",          "\U0001f4ca", 1,  False, False, True, "internal"),
+        ("notas",               "Notas",              "\U0001f4dd", 2,  True,  True,  True, "internal"),
+        ("estudiantes",         "Estudiantes",        "\U0001f9d1\u200d\U0001f393", 3, True, True, True, "internal"),
+        ("docentes",            "Docentes",           "\U0001f468\u200d\U0001f3eb", 4, True, True, True, "internal"),
+        ("asignaturas",         "Asignaturas",        "\U0001f4da", 5,  True,  True,  True, "internal"),
+        ("matricula",           "Matrícula",          "\U0001f4cb", 6,  True,  True,  True, "internal"),
+        ("asistencia_alumnos",  "Asistencia alumnos", "\U0001f4c5", 7,  True,  True,  True, "internal"),
+        ("asistencia_docentes", "Asistencia docentes","\U0001f468\u200d\U0001f3eb", 8, True, True, True, "internal"),
+        ("gastos",              "Gastos",             "\U0001f4b0", 9,  True,  True,  True, "internal"),
+        ("documentos",          "Documentos",         "\U0001f4c1", 10, True,  True,  True, "internal"),
+        ("configuracion",       "Configuración",      "\u2699\ufe0f", 11, False, False, True, "internal"),
+    ]
+
+    def _seed_sections(self):
+        with self._connect() as conn:
+            cat = conn.execute(
+                "SELECT id FROM document_categories WHERE name = 'Document'"
+            ).fetchone()
+            doc_cat_id = cat["id"] if cat else 6
+            for key, name, icon, order, editable, deletable, visible, vtype in self.SYSTEM_SECTIONS:
+                existing = conn.execute(
+                    "SELECT id, document_id FROM custom_sections WHERE section_key = ?", (key,)
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        "UPDATE custom_sections SET sort_order = ?, editable = ?, deletable = ?, visible = ? WHERE id = ?",
+                        (order, 1 if editable else 0, 1 if deletable else 0, 1 if visible else 0, existing["id"]),
+                    )
+                else:
+                    cur = conn.execute(
+                        """INSERT INTO documents (name, category_id, icon, color, settings_json)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (name, doc_cat_id, icon, "#5e81f4", "{}"),
+                    )
+                    doc_id = cur.lastrowid
+                    conn.execute(
+                        "INSERT INTO document_instances (document_id, current_version) VALUES (?, 0)",
+                        (doc_id,),
+                    )
+                    conn.execute(
+                        """INSERT INTO custom_sections
+                           (section_key, name, icon, columns_json, editable, deletable, visible, sort_order, document_id, type)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (key, name, icon, "[]", 1 if editable else 0, 1 if deletable else 0, 1 if visible else 0, order, doc_id, vtype),
+                    )
 
     def _migrate_documents(self):
         with self._connect() as conn:
@@ -1716,10 +1790,19 @@ class Database:
                 "INSERT INTO document_versions (document_id, version, workbook_json, comment, created_by) VALUES (?, ?, ?, ?, ?)",
                 (doc_id, max_ver, workbook_json, comment, created_by),
             )
-            conn.execute(
-                "UPDATE document_instances SET current_version = ? WHERE document_id = ?",
-                (max_ver, doc_id),
-            )
+            existing = conn.execute(
+                "SELECT 1 FROM document_instances WHERE document_id = ?", (doc_id,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE document_instances SET current_version = ? WHERE document_id = ?",
+                    (max_ver, doc_id),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO document_instances (document_id, current_version) VALUES (?, ?)",
+                    (doc_id, max_ver),
+                )
             return cur.lastrowid
 
     def get_document_versions(self, doc_id):
@@ -2177,8 +2260,8 @@ def get_all_expenses():
 
 # ── CRUD: Secciones personalizadas ──────────────────────────────────────
 
-def create_custom_section(section_key, name, columns_json, icon="📄", workbook_json=None, description="", color="#5e81f4", type="spreadsheet", settings_json="{}"):
-    return _db.create_custom_section(section_key, name, columns_json, icon, workbook_json, description, color, type, settings_json)
+def create_custom_section(section_key, name, columns_json, icon="📄", workbook_json=None, description="", color="#5e81f4", type="spreadsheet", settings_json="{}", sort_order=0, document_id=None):
+    return _db.create_custom_section(section_key, name, columns_json, icon, workbook_json, description, color, type, settings_json, sort_order, document_id)
 
 def update_custom_section_meta(section_id, **kwargs):
     return _db.update_custom_section_meta(section_id, **kwargs)
@@ -2188,8 +2271,16 @@ def get_custom_section(section_id_or_key):
     return _db.get_custom_section(section_id_or_key)
 
 
-def get_all_custom_sections():
-    return _db.get_all_custom_sections()
+def get_all_custom_sections(visible_only=False):
+    return _db.get_all_custom_sections(visible_only=visible_only)
+
+
+def archive_custom_section(section_id):
+    return _db.archive_custom_section(section_id)
+
+
+def update_section_workbook(section_id, workbook_json):
+    return _db.update_section_workbook(section_id, workbook_json)
 
 
 def delete_custom_section(section_id):

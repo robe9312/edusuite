@@ -1,31 +1,20 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QRect, QEasingCurve, QTimer
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QRect, QEasingCurve
 from PySide6.QtGui import QPixmap
 import os
 from config import COLOR_SURFACE, COLOR_ACCENT, COLOR_ACCENT_HOVER, COLOR_TEXT, COLOR_TEXT_DIM, COLOR_BORDER, COLOR_HOVER
 from settings_manager import get as get_setting
+from db.database import get_all_custom_sections
 
 COLLAPSED_W = 72
 EXPANDED_W = 200
 ANIM_DURATION = 180
 
-NAV_ITEMS = [
-    ("inicio", "\U0001f3e0", "Inicio"),
-    ("dashboard", "\U0001f4ca", "Dashboard"),
-    ("notas", "\U0001f4da", "Notas"),
-    ("estudiantes", "\U0001f9d1\u200d\U0001f393", "Estudiantes"),
-    ("docentes", "\U0001f468\u200d\U0001f3eb", "Docentes"),
-    ("asignaturas", "\U0001f4dd", "Asignaturas"),
-    ("matricula", "\U0001f4bc", "Matrícula"),
-    ("gastos", "\U0001f4b0", "Gastos"),
-    ("backup", "\u26a0\ufe0f", "Backup"),
-    ("configuracion", "\u2699\ufe0f", "Configuración"),
-]
-
 
 class SidebarButton(QPushButton):
-    def __init__(self, icon_char, text, collapsed=True):
+    def __init__(self, section_key, icon_char, text, collapsed=True):
         super().__init__()
+        self.section_key = section_key
         self._icon_char = icon_char
         self._label = text
         self._collapsed = collapsed
@@ -86,9 +75,8 @@ class CompactSidebar(QWidget):
         layout.setContentsMargins(0, 16, 0, 16)
         layout.setSpacing(2)
 
-        # Load institution logo if configured
-        logo_path = get_setting('institution_logo_path')
         logo = QLabel()
+        logo_path = get_setting('institution_logo_path')
         if logo_path and os.path.isfile(logo_path):
             pix = QPixmap(logo_path).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             logo.setPixmap(pix)
@@ -104,10 +92,11 @@ class CompactSidebar(QWidget):
         sep.setStyleSheet(f"background: {COLOR_BORDER}; margin: 8px 12px;")
         layout.addWidget(sep)
 
-        for key, icon, label in NAV_ITEMS:
-            btn = SidebarButton(icon, label, collapsed=True)
-            btn.clicked.connect(lambda _, k=key: self._navigate(k))
-            self._buttons.append((key, btn))
+        sections = get_all_custom_sections(visible_only=True)
+        for sec in sections:
+            btn = SidebarButton(sec["section_key"], sec["icon"], sec["name"], collapsed=True)
+            btn.clicked.connect(lambda _, k=sec["section_key"]: self._navigate(k))
+            self._buttons.append((sec["section_key"], btn))
             layout.addWidget(btn)
 
         layout.addStretch()
@@ -125,17 +114,23 @@ class CompactSidebar(QWidget):
             btn.set_active(k == key)
         self.page_changed.emit(key)
 
-    def add_custom_item(self, key, icon, label):
-        btn = SidebarButton(icon, label, collapsed=True)
-        btn.clicked.connect(lambda _, k=key: self._navigate(k))
-        self._buttons.append((key, btn))
-        self.layout().addWidget(btn)
-        NAV_ITEMS.append((key, icon, label))
-
     def set_active_page(self, key):
         self._current_page = key
         for k, btn in self._buttons:
             btn.set_active(k == key)
+
+    def refresh(self):
+        for k, btn in self._buttons:
+            btn.deleteLater()
+        self._buttons.clear()
+        self._current_page = "inicio"
+
+        sections = get_all_custom_sections(visible_only=True)
+        for sec in sections:
+            btn = SidebarButton(sec["section_key"], sec["icon"], sec["name"], collapsed=not self._expanded)
+            btn.clicked.connect(lambda _, k=sec["section_key"]: self._navigate(k))
+            self._buttons.append((sec["section_key"], btn))
+            self.layout().insertWidget(self.layout().count() - 1, btn)
 
     def enterEvent(self, event):
         self._animate(EXPANDED_W)

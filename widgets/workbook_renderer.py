@@ -6,12 +6,27 @@ from PySide6.QtWidgets import (
 from config import (
     COLOR_SURFACE, COLOR_BG, COLOR_PANEL, COLOR_BORDER,
     COLOR_TEXT, COLOR_TEXT_MUTED, COLOR_ACCENT, COLOR_ACCENT_HOVER,
-    COLOR_HOVER, COLOR_TEXT_DIM, COLOR_SIDEBAR_ACTIVE,
+    COLOR_HOVER, COLOR_TEXT_DIM, COLOR_SIDEBAR_ACTIVE, COLOR_DANGER,
 )
+from logs.logger import log as log_msg
 from spreadsheet.services import DocumentService
 from spreadsheet.core.grid_cell import CellType
 from spreadsheet.engine import SpreadsheetEngine
 from spreadsheet.datasource.memory_source import MemoryDataSource
+
+
+def _active_area(grid):
+    max_r = max_c = -1
+    for r in range(grid.row_count()):
+        for c in range(grid.col_count()):
+            cell = grid.cell(r, c)
+            val = cell.display if hasattr(cell, 'display') else str(cell)
+            if val and val.strip():
+                if r > max_r: max_r = r
+                if c > max_c: max_c = c
+    if max_r < 0:
+        return 1, 1
+    return max_r + 1, max_c + 1
 
 
 class EngineSheetModel(QAbstractTableModel):
@@ -29,10 +44,15 @@ class EngineSheetModel(QAbstractTableModel):
         if not index.isValid() or not self._engine:
             return None
         cell = self._engine.get_cell(index.row(), index.column())
-        if role == Qt.DisplayRole:
-            return cell.display
-        if role == Qt.ForegroundRole:
+        if cell is None:
             return None
+        if role == Qt.DisplayRole:
+            return cell.display if cell.display else None
+        if role == Qt.ForegroundRole:
+            from PySide6.QtGui import QColor
+            fg = cell.style.text_color if cell.style else None
+            if fg and hasattr(fg, 'to_qt'):
+                return QColor(*fg.to_qt())
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
@@ -63,19 +83,7 @@ class WorkbookRenderView(QWidget):
         self._doc_service = doc_service or DocumentService()
         self._models = []
         self._engines = []
-
-        doc_name = section.get("name", "")
-        if doc_name:
-            docs = self._doc_service.list_documents(search=doc_name)
-            if docs:
-                opened = self._doc_service.open(docs[0]["id"])
-            else:
-                opened = False
-            if not opened and "doc_id" in section:
-                opened = self._doc_service.open(section["doc_id"])
-        else:
-            opened = False
-        self._engines = []
+        self._content_widget = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -84,20 +92,61 @@ class WorkbookRenderView(QWidget):
         toolbar = self._build_toolbar()
         layout.addWidget(toolbar)
 
-        if not opened or not self._doc_service.adapter.sheet_count():
+        self._body_layout = layout
+        self._load_content()
+
+    def _load_content(self):
+        if self._content_widget:
+            self._body_layout.removeWidget(self._content_widget)
+            self._content_widget.deleteLater()
+            self._content_widget = None
+        self._models.clear()
+        self._engines.clear()
+
+        sec_name = self.section.get("name", "?")
+        doc_id = self.section.get("document_id")
+        log_msg(f"VIEW_LOAD section={sec_name} doc_id={doc_id}")
+        if doc_id:
+            opened = self._doc_service.open(doc_id)
+            log_msg(f"VIEW_OPEN doc_id={doc_id} opened={opened}")
+        else:
+            doc_name = self.section.get("name", "")
+            if doc_name:
+                docs = self._doc_service.list_documents(search=doc_name)
+                if docs:
+                    log_msg(f"VIEW_FIND doc_id={docs[0]['id']} via name={doc_name}")
+                    opened = self._doc_service.open(docs[0]["id"])
+                else:
+                    log_msg(f"VIEW_NO_DOC no doc found for name={doc_name}")
+                    opened = False
+            else:
+                opened = False
+
+        num_sheets = self._doc_service.adapter.sheet_count()
+        log_msg(f"VIEW_SHEETS count={num_sheets} after open")
+
+        if not opened or not num_sheets:
+            log_msg(f"VIEW_EMPTY section={sec_name} doc_id={doc_id}")
             empty = QLabel("Esta seccion no tiene datos de workbook")
             empty.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 14px; padding: 40px;")
             empty.setAlignment(Qt.AlignCenter)
-            layout.addWidget(empty)
+            self._content_widget = empty
+            self._body_layout.addWidget(empty)
             return
 
-        self.stack = QStackedWidget()
-        num_sheets = self._doc_service.adapter.sheet_count()
+        container = QWidget()
+        cl = QVBoxLayout(container)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(8)
+
+        stack = QStackedWidget()
         for i in range(num_sheets):
             grid = self._doc_service.adapter.sheet(i)
+            rows, cols = _active_area(grid)
+            log_msg(f"VIEW_SHEET{i} active_area rows={rows} cols={cols}")
             engine = SpreadsheetEngine(
                 grid,
-                MemoryDataSource(grid.row_count(), grid.col_count())
+                MemoryDataSource(rows, cols)
             )
             self._engines.append(engine)
             model = EngineSheetModel(engine)
@@ -129,13 +178,13 @@ class WorkbookRenderView(QWidget):
                     font-size: 11px;
                 }}
             """)
-            self.stack.addWidget(tv)
+            stack.addWidget(tv)
 
-        layout.addWidget(self.stack)
+        cl.addWidget(stack)
 
         if num_sheets > 1:
-            self.tabs = QTabBar()
-            self.tabs.setStyleSheet(f"""
+            tabs = QTabBar()
+            tabs.setStyleSheet(f"""
                 QTabBar {{
                     background: {COLOR_PANEL}; border: none; border-radius: 6px;
                     padding: 2px;
@@ -152,12 +201,17 @@ class WorkbookRenderView(QWidget):
             """)
             for i in range(num_sheets):
                 meta = self._doc_service.adapter.sheet_meta(i)
-                self.tabs.addTab(meta.get("name", f"Sheet {i+1}"))
-            self.tabs.currentChanged.connect(self._on_tab_change)
-            layout.addWidget(self.tabs)
+                tabs.addTab(meta.get("name", f"Sheet {i+1}"))
+            tabs.currentChanged.connect(stack.setCurrentIndex)
+            cl.addWidget(tabs)
 
-    def _on_tab_change(self, idx):
-        self.stack.setCurrentIndex(idx)
+        self._content_widget = container
+        self._body_layout.addWidget(container)
+
+    def refresh(self):
+        name = self.section.get("name", "?")
+        log_msg(f"VIEW_REFRESH section={name}")
+        self._load_content()
 
     def _build_toolbar(self):
         bar = QFrame()
@@ -174,69 +228,36 @@ class WorkbookRenderView(QWidget):
         dot.setStyleSheet(f"background: {color}; border-radius: 6px;")
         h.addWidget(dot)
 
-        name = sec.get("name", "Seccion")
-        title = QLabel(f"{icon} {name}")
+        title = QLabel(sec.get("name", ""))
         title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {COLOR_TEXT};")
         h.addWidget(title)
 
-        stype = sec.get("type", "spreadsheet")
-        badge = QLabel(stype)
-        badge.setStyleSheet(f"""
-            background: {color}33; color: {color};
-            font-size: 11px; padding: 2px 10px; border-radius: 10px; font-weight: 600;
-        """)
-        h.addWidget(badge)
-
-        desc = sec.get("description", "")
-        if desc:
-            d = QLabel(desc)
-            d.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px;")
-            h.addWidget(d)
-
         h.addStretch()
 
-        sc = self._doc_service.adapter.sheet_count()
-        sc_lbl = QLabel(f"{sc} hoja(s)")
-        sc_lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 12px; margin-right: 8px;")
-        h.addWidget(sc_lbl)
-
-        btn = QPushButton("Editar en LuckySheet")
+        btn = QPushButton("Editar plantilla")
+        btn.setCursor(Qt.PointingHandCursor)
         btn.setStyleSheet(f"""
-            QPushButton {{ padding: 0 16px; height: 34px; border: none;
-                background: {COLOR_ACCENT}; color: #fff; font-size: 13px; border-radius: 6px;
-                font-weight: 600; }}
+            QPushButton {{
+                background: {COLOR_ACCENT}; color: #fff;
+                border: none; padding: 6px 16px;
+                font-weight: 600; font-size: 12px;
+            }}
             QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
         """)
         btn.clicked.connect(lambda: self.edit_requested.emit(sec.get("section_key", "")))
         h.addWidget(btn)
 
-        btn_del = QPushButton("Eliminar")
-        btn_del.setStyleSheet("""
-            QPushButton { padding: 0 12px; height: 34px; border: none;
-                background: transparent; color: #ef4444; font-size: 12px; border-radius: 6px; }
-            QPushButton:hover { background: #2a1a1a; }
+        btn_del = QPushButton("Archivar")
+        btn_del.setCursor(Qt.PointingHandCursor)
+        btn_del.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {COLOR_DANGER};
+                border: 1px solid {COLOR_DANGER};
+                padding: 6px 16px; font-size: 12px;
+            }}
+            QPushButton:hover {{ background: {COLOR_DANGER}15; }}
         """)
         btn_del.clicked.connect(lambda: self.delete_requested.emit(sec.get("section_key", "")))
         h.addWidget(btn_del)
 
         return bar
-
-    def refresh_model(self):
-        for m in self._models:
-            m.refresh()
-        for i, e in enumerate(self._engines):
-            grid = self._doc_service.adapter.sheet(i)
-            if grid:
-                e._grid = grid
-        for m in self._models:
-            m.refresh()
-
-    @classmethod
-    def from_data(cls, doc_service, doc_name="Documento", parent=None):
-        sec = {
-            "section_key": f"preview_{id(doc_service)}",
-            "name": doc_name,
-            "icon": "\U0001f4c4",
-            "type": "spreadsheet",
-        }
-        return cls(sec, doc_service, parent)

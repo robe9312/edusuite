@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QHeaderView, QTableView
 from config import *
 from db.database import (
     get_all_custom_sections, get_custom_section,
-    create_custom_section, delete_custom_section,
+    create_custom_section, archive_custom_section, update_custom_section_meta,
 )
 from spreadsheet import SpreadsheetEngine, WorkbookAdapter, MemoryDataSource
 from widgets.workbook_renderer import EngineSheetModel
@@ -55,6 +55,8 @@ class _SectionRow(QFrame):
         self._section = section
         self._on_edit = on_edit
         self._on_delete = on_delete
+        editable = section.get("editable", True)
+        deletable = section.get("deletable", True)
 
         self.setStyleSheet(f"""
             _SectionRow {{
@@ -66,7 +68,7 @@ class _SectionRow(QFrame):
         lay.setContentsMargins(16, 12, 16, 12)
         lay.setSpacing(8)
 
-        # Name
+        # Name + badges
         icon = section.get("icon", "📄")
         name_row = QHBoxLayout()
         icon_lbl = QLabel(icon)
@@ -75,7 +77,14 @@ class _SectionRow(QFrame):
         name_lbl = QLabel(section["name"])
         name_lbl.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {COLOR_TEXT};")
         name_row.addWidget(name_lbl)
-        name_row.addStretch()
+
+        if not editable:
+            badge = QLabel("sistema")
+            badge.setStyleSheet(f"""
+                background: {COLOR_TEXT_MUTED}22; color: {COLOR_TEXT_MUTED};
+                font-size: 10px; padding: 2px 6px; font-weight: 600;
+            """)
+            name_row.addWidget(badge)
 
         stype = section.get("type", "")
         if stype:
@@ -85,6 +94,7 @@ class _SectionRow(QFrame):
                 font-size: 10px; padding: 2px 8px; font-weight: 600;
             """)
             name_row.addWidget(badge)
+        name_row.addStretch()
         lay.addLayout(name_row)
 
         # Preview
@@ -99,6 +109,7 @@ class _SectionRow(QFrame):
 
         edit_btn = QPushButton("Editar")
         edit_btn.setCursor(Qt.PointingHandCursor)
+        edit_btn.setEnabled(editable)
         edit_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {COLOR_ACCENT}; color: #fff;
@@ -106,12 +117,14 @@ class _SectionRow(QFrame):
                 font-size: 12px; font-weight: 600;
             }}
             QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
+            QPushButton:disabled {{ background: {COLOR_BORDER}; color: {COLOR_TEXT_MUTED}; }}
         """)
         edit_btn.clicked.connect(lambda: self._on_edit(section["section_key"]))
         act.addWidget(edit_btn)
 
-        del_btn = QPushButton("Eliminar")
+        del_btn = QPushButton("Archivar" if deletable else "Archivado")
         del_btn.setCursor(Qt.PointingHandCursor)
+        del_btn.setEnabled(deletable)
         del_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent; color: {COLOR_DANGER};
@@ -119,6 +132,7 @@ class _SectionRow(QFrame):
                 padding: 4px 16px; font-size: 12px;
             }}
             QPushButton:hover {{ background: {COLOR_DANGER}15; }}
+            QPushButton:disabled {{ border-color: {COLOR_BORDER}; color: {COLOR_TEXT_MUTED}; }}
         """)
         del_btn.clicked.connect(lambda: self._on_delete(section["section_key"]))
         act.addWidget(del_btn)
@@ -129,7 +143,7 @@ class _SectionRow(QFrame):
     def _load_preview(self):
         wb_json = self._section.get("workbook_json")
         if not wb_json:
-            empty = QLabel("(sin datos)")
+            empty = QLabel("(sin workbook)")
             empty.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: 11px; padding: 4px 0;")
             self._preview.addWidget(empty)
             return
@@ -264,7 +278,7 @@ class MetaEditorWidget(QWidget):
         if not sec:
             return
         from views.editor_view import _write_workbook_data
-        _write_workbook_data(sec.get("workbook_json", "[]"), sec.get("name", "Sección"))
+        _write_workbook_data(sec.get("workbook_json", "[]"), sec.get("name", "Sección"), section_id=sec.get("id"))
         import socket
         s = socket.socket()
         s.bind(("127.0.0.1", 0))
@@ -274,26 +288,36 @@ class MetaEditorWidget(QWidget):
         from views.editor_view import _Handler
         from engine.meta_engine import MetaEngine
         _Handler.engine = MetaEngine()
+        _Handler.section_id = sec["id"]
         srv = HTTPServer(("127.0.0.1", port), _Handler)
         import threading
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
         from widgets.luckysheet_window import LuckySheetWindow
         self._ls_window = LuckySheetWindow(port, self)
-        self._ls_window.destroyed.connect(self.refresh)
+        self._ls_window.destroyed.connect(self.on_luckysheet_closed)
         self._ls_window.showMaximized()
 
+    def on_luckysheet_closed(self):
+        self.refresh()
+        parent = self.parent()
+        while parent and not hasattr(parent, "on_luckysheet_closed"):
+            parent = parent.parent() if hasattr(parent, "parent") else None
+        if parent and hasattr(parent, "on_luckysheet_closed"):
+            parent.on_luckysheet_closed()
+
     def _delete(self, section_key: str):
+        sec = get_custom_section(section_key)
+        if not sec:
+            return
         reply = QMessageBox.question(
-            self, "Eliminar sección",
-            "¿Desea eliminar la sección?",
+            self, "Archivar sección",
+            f"¿Archivar '{sec.get('name')}'? La sección se ocultará del panel lateral y podrá restaurarse.",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
-        sec = get_custom_section(section_key)
-        if sec:
-            delete_custom_section(sec["id"])
+        archive_custom_section(sec["id"])
         self.refresh()
 
     def _new_section(self):
@@ -358,11 +382,15 @@ class MetaEditorWidget(QWidget):
         import re
         key = "sec_" + re.sub(r'[^a-z0-9_]', '', name.lower().replace(" ", "_"))
 
+        from db.database import create_document
+        doc_id = create_document(name=name, description=desc)
+
         sec_id = create_custom_section(
             section_key=key, name=name,
             columns_json="[]", icon=icon,
             workbook_json=None, description=desc,
             color="#5e81f4", type=stype,
+            document_id=doc_id,
         )
         if sec_id:
             self.refresh()
