@@ -12,7 +12,6 @@ from PySide6.QtGui import QColor
 
 from config import *
 from ui_style import Input, Combo
-from .editor_view import EditorView
 import settings_manager as sset
 from db.database import (
     VIEW_PERMISSIONS,
@@ -447,15 +446,16 @@ class SettingsView(QWidget):
         g_layout.setSpacing(8)
         self._build_general(g_layout)
         tabs.addTab(g_page, "General")
-        # ── Edición de la aplicación (Luckysheet) ──
-        app_editor_page = QWidget()
-        app_editor_page.setStyleSheet(f"background: {COLOR_BG};")
-        app_editor_layout = QVBoxLayout(app_editor_page)
-        app_editor_layout.setContentsMargins(16, 16, 16, 16)
-        app_editor_layout.setSpacing(8)
-        editor_view = EditorView()
-        app_editor_layout.addWidget(editor_view)
-        tabs.addTab(app_editor_page, "Meta Editor")
+        # ── Meta Editor ──
+        meta_page = QWidget()
+        meta_page.setStyleSheet(f"background: {COLOR_BG};")
+        meta_layout = QVBoxLayout(meta_page)
+        meta_layout.setContentsMargins(16, 16, 16, 16)
+        meta_layout.setSpacing(8)
+        from widgets.meta_editor import MetaEditorWidget
+        meta_editor = MetaEditorWidget()
+        meta_layout.addWidget(meta_editor)
+        tabs.addTab(meta_page, "Meta Editor")
         outer.addWidget(tabs)
 
     # ── School Years ──
