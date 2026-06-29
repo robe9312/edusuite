@@ -27,7 +27,7 @@ def _write_workbook_data(workbook_json, name="Sección"):
     if isinstance(data, list):
         payload = {"sheetData": data, "name": name}
     else:
-        payload = data
+        payload = {"sheetData": [], "name": name}
     with open(DATA_FILE, "w") as f:
         json.dump(payload, f)
     try:
