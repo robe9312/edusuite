@@ -357,7 +357,6 @@ class EditorView(QWidget):
 
     def refresh(self):
         self.cb_type.setCurrentIndex(0)
-        self.cb_level.currentIndexChanged.connect(self._on_level_change)
         self._refresh_levels()
 
     def _refresh_levels(self):

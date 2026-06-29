@@ -198,8 +198,8 @@ class DocumentService:
         ls_data = self._adapter.save()
         meta = self._current_meta
         payload = {
-            "data": ls_data,
-            "title": meta.get("name", "Documento"),
+            "sheetData": ls_data,
+            "name": meta.get("name", "Documento"),
         }
         editor_view.load_workbook(payload)
 

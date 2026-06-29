@@ -3,7 +3,6 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableView, QHeaderView, QFrame, QTabBar, QStackedWidget,
 )
-from services import ServiceRegistry
 from config import (
     COLOR_SURFACE, COLOR_BG, COLOR_PANEL, COLOR_BORDER,
     COLOR_TEXT, COLOR_TEXT_MUTED, COLOR_ACCENT, COLOR_ACCENT_HOVER,
@@ -11,6 +10,8 @@ from config import (
 )
 from spreadsheet.services import DocumentService
 from spreadsheet.core.grid_cell import CellType
+from spreadsheet.engine import SpreadsheetEngine
+from spreadsheet.datasource.memory_source import MemoryDataSource
 
 
 class EngineSheetModel(QAbstractTableModel):
@@ -61,7 +62,7 @@ class WorkbookRenderView(QWidget):
         self.section = section
         self._doc_service = doc_service or DocumentService()
         self._models = []
-        self._engine = None
+        self._engines = []
 
         doc_name = section.get("name", "")
         if doc_name:
@@ -74,7 +75,7 @@ class WorkbookRenderView(QWidget):
                 opened = self._doc_service.open(section["doc_id"])
         else:
             opened = False
-        self._engine = self._doc_service.engine if opened else None
+        self._engines = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -83,7 +84,7 @@ class WorkbookRenderView(QWidget):
         toolbar = self._build_toolbar()
         layout.addWidget(toolbar)
 
-        if not self._engine:
+        if not opened or not self._doc_service.adapter.sheet_count():
             empty = QLabel("Esta seccion no tiene datos de workbook")
             empty.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 14px; padding: 40px;")
             empty.setAlignment(Qt.AlignCenter)
@@ -93,8 +94,13 @@ class WorkbookRenderView(QWidget):
         self.stack = QStackedWidget()
         num_sheets = self._doc_service.adapter.sheet_count()
         for i in range(num_sheets):
-            self._doc_service.adapter.sheet(i)
-            model = EngineSheetModel(self._engine)
+            grid = self._doc_service.adapter.sheet(i)
+            engine = SpreadsheetEngine(
+                grid,
+                MemoryDataSource(grid.row_count(), grid.col_count())
+            )
+            self._engines.append(engine)
+            model = EngineSheetModel(engine)
             self._models.append(model)
 
             tv = QTableView()
@@ -216,6 +222,12 @@ class WorkbookRenderView(QWidget):
         return bar
 
     def refresh_model(self):
+        for m in self._models:
+            m.refresh()
+        for i, e in enumerate(self._engines):
+            grid = self._doc_service.adapter.sheet(i)
+            if grid:
+                e._grid = grid
         for m in self._models:
             m.refresh()
 
