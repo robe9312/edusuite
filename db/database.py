@@ -87,6 +87,7 @@ class Database:
                     self._create_all_tables(conn)
             else:
                 self._create_all_tables(conn)
+            self._fix_grades_fk(conn)
         self._seed_subjects()
         self._seed_roles()
         self._seed_admin()
@@ -132,6 +133,51 @@ class Database:
             DROP TABLE students_old;
         """)
         self._create_other_tables(conn)
+        conn.execute("PRAGMA foreign_keys=ON")
+
+    def _fix_grades_fk(self, conn):
+        tables_to_fix = []
+        for table in ("grades", "enrollment"):
+            cursor = conn.execute(f"PRAGMA foreign_key_list({table})")
+            fks = cursor.fetchall()
+            if any(fk[2] != "students" for fk in fks):
+                tables_to_fix.append(table)
+        if not tables_to_fix:
+            return
+        conn.execute("PRAGMA foreign_keys=OFF")
+        for table in tables_to_fix:
+            data = conn.execute(f"SELECT * FROM {table}").fetchall()
+            cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
+            if table == "grades":
+                conn.execute("""
+                    CREATE TABLE grades (
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                        subject_id   INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+                        period       TEXT NOT NULL,
+                        score        REAL,
+                        obs          TEXT,
+                        updated_at   TEXT DEFAULT (datetime('now')),
+                        UNIQUE(student_id, subject_id, period)
+                    )
+                """)
+            elif table == "enrollment":
+                conn.execute("""
+                    CREATE TABLE enrollment (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        student_id      INTEGER REFERENCES students(id) ON DELETE CASCADE,
+                        school_year_id  INTEGER REFERENCES school_years(id),
+                        status          TEXT DEFAULT 'activo',
+                        payment_status  TEXT DEFAULT 'pendiente',
+                        amount          REAL DEFAULT 0,
+                        updated_at      TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+            placeholders = ",".join(["?"] * len(cols))
+            col_names = ",".join(cols)
+            for row in data:
+                conn.execute(f"INSERT INTO {table}({col_names}) VALUES ({placeholders})", row)
         conn.execute("PRAGMA foreign_keys=ON")
 
     def _create_all_tables(self, conn):

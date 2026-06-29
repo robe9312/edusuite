@@ -1,9 +1,12 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMessageBox,
     QComboBox, QLineEdit, QDialog, QRadioButton, QButtonGroup, QFrame,
+    QCheckBox, QHeaderView, QFileDialog, QTableWidget, QTableWidgetItem,
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QShortcut, QKeySequence, QUndoStack
+from PySide6.QtGui import (
+    QShortcut, QKeySequence, QUndoStack, QPainter, QColor, QFont,
+)
 
 from config import *
 from models.column_definition import ColumnDef, ColumnType
@@ -183,6 +186,124 @@ def _build_subject_grade_columns(subject):
     return cols
 
 
+class ImportPreviewDialog(QDialog):
+    def __init__(self, diff, errors, summary, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Vista previa de importación")
+        self.setMinimumSize(600, 400)
+        self.setModal(True)
+        self.setStyleSheet(f"QDialog {{ background: {COLOR_SURFACE}; }}")
+        self._diff = diff
+        self._accepted = None
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("Revisa los datos antes de importar")
+        title.setStyleSheet(f"font-size: 16px; font-weight: 600; color: {COLOR_TEXT};")
+        layout.addWidget(title)
+
+        stats = QHBoxLayout()
+        stats.setSpacing(16)
+        s = summary
+        for label, val, col in [
+            ("Nuevos", s.get("new", 0), COLOR_SUCCESS),
+            ("Sin cambios", s.get("same", 0), COLOR_TEXT_MUTED),
+            ("Conflictos", s.get("conflicts", 0), "#F9A825"),
+            ("Errores", s.get("errors", 0), COLOR_DANGER),
+        ]:
+            box = QFrame()
+            box.setStyleSheet(f"background: {COLOR_PANEL}; border: 1px solid {COLOR_BORDER}; border-radius: 6px;")
+            bl = QVBoxLayout(box)
+            bl.setContentsMargins(12, 8, 12, 8)
+            v = QLabel(str(val))
+            v.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {col};")
+            v.setAlignment(Qt.AlignCenter)
+            bl.addWidget(v)
+            l = QLabel(label)
+            l.setStyleSheet(f"font-size: 10px; color: {COLOR_TEXT_DIM};")
+            l.setAlignment(Qt.AlignCenter)
+            bl.addWidget(l)
+            stats.addWidget(box)
+        layout.addLayout(stats)
+
+        if errors:
+            el = QLabel("\n".join(errors[:5]))
+            el.setStyleSheet(f"color: {COLOR_DANGER}; font-size: 11px; padding: 8px; border: 1px solid {COLOR_DANGER};")
+            layout.addWidget(el)
+
+        table = QTableWidget()
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels(["Estado", "Alumno", "Asignatura", "Nota"])
+        table.setStyleSheet(f"""
+            QTableWidget {{ background: {COLOR_INPUT}; border: 1px solid {COLOR_BORDER};
+                font-size: 11px; color: {COLOR_TEXT}; }}
+            QHeaderView::section {{ background: {COLOR_SURFACE}; color: {COLOR_TEXT_MUTED};
+                font-weight: 600; padding: 4px 8px; border: 1px solid {COLOR_BORDER}; }}
+        """)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.horizontalHeader().setStretchLastSection(True)
+        status_colors = {"new": COLOR_SUCCESS, "conflict": "#F9A825", "same": COLOR_TEXT_MUTED, "error": COLOR_DANGER}
+        for row_idx, entry in enumerate(diff):
+            st = entry.get("_status", "new")
+            table.insertRow(row_idx)
+            s_item = QTableWidgetItem({"new": "✚ Nuevo", "conflict": "⚠ Conflicto", "same": "✓ Sin cambio", "error": "✗ Error"}.get(st, st))
+            s_item.setForeground(QColor(status_colors.get(st, COLOR_TEXT)))
+            table.setItem(row_idx, 0, s_item)
+            table.setItem(row_idx, 1, QTableWidgetItem(entry.get("code", "")))
+            from db.database import get_subject
+            subj = get_subject(entry.get("subject_id"))
+            table.setItem(row_idx, 2, QTableWidgetItem(subj["name"] if subj else "?"))
+            sc = entry.get("score")
+            table.setItem(row_idx, 3, QTableWidgetItem(str(sc) if sc is not None else ""))
+        table.resizeColumnsToContents()
+        layout.addWidget(table, 1)
+
+        btns = QHBoxLayout()
+        btns.addStretch()
+        cancel_btn = QPushButton("Cancelar")
+        cancel_btn.setStyleSheet(f"QPushButton {{ padding: 0 24px; height: 36px; border: none; background: transparent; color: {COLOR_TEXT_MUTED}; font-size: 13px; }} QPushButton:hover {{ background: {COLOR_HOVER}; }}")
+        cancel_btn.clicked.connect(self.reject)
+        import_btn = QPushButton("Importar")
+        import_btn.setStyleSheet(f"QPushButton {{ padding: 0 24px; height: 36px; border: none; background: {COLOR_SUCCESS}; color: #ffffff; font-size: 13px; font-weight: 600; }} QPushButton:hover {{ background: #3d9142; }}")
+        import_btn.clicked.connect(self._accept_import)
+        btns.addWidget(cancel_btn)
+        btns.addWidget(import_btn)
+        layout.addLayout(btns)
+
+    def _accept_import(self):
+        from exporters.excel_importer import apply_import_result
+        accepted = apply_import_result(self._diff)
+        self._accepted = accepted
+        self.accept()
+
+
+class _CierreHeader(QHeaderView):
+    def __init__(self, parent=None):
+        super().__init__(Qt.Horizontal, parent)
+        self._cierre_idx = -1
+
+    def set_cierre_idx(self, idx):
+        self._cierre_idx = idx
+        self.update()
+
+    def paintSection(self, painter, rect, logicalIndex):
+        if logicalIndex == self._cierre_idx:
+            painter.save()
+            painter.fillRect(rect, QColor("#2E7D32"))
+            painter.setPen(QColor("#ffffff"))
+            f = painter.font()
+            f.setBold(True)
+            painter.setFont(f)
+            model = self.model()
+            text = model.headerData(logicalIndex, Qt.Horizontal, Qt.DisplayRole) or ""
+            painter.drawText(rect, Qt.AlignCenter, str(text))
+            painter.restore()
+            return
+        super().paintSection(painter, rect, logicalIndex)
+
+
 class GradesView(QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -193,10 +314,11 @@ class GradesView(QWidget):
         self._proxy = None
         self._undo_stack = QUndoStack()
         self._clipboard = None
+        self._cierre_visible = False
+        self._cierre_header = None
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(200)
-        self._search_timer.timeout.connect(self._apply_search)
         self._build()
         QShortcut(QKeySequence("Ctrl+S"), self, self._save_all)
         QShortcut(QKeySequence("Ctrl+Z"), self, self._undo_stack.undo)
@@ -290,6 +412,22 @@ class GradesView(QWidget):
         export_btn.setStyleSheet(f"QPushButton {{ padding: 0 16px; height: 32px; border: none; background: {COLOR_ACCENT}; color: #ffffff; font-size: 12px; }} QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}")
         export_btn.clicked.connect(self._export_dialog)
         filter_bar.addWidget(export_btn)
+
+        import_btn = QPushButton("Importar ACTA")
+        import_btn.setStyleSheet(f"QPushButton {{ padding: 0 16px; height: 32px; border: none; background: #FF8F00; color: #ffffff; font-size: 12px; font-weight: 600; }} QPushButton:hover {{ background: #FF6F00; }}")
+        import_btn.clicked.connect(self._import_acta)
+        filter_bar.addWidget(import_btn)
+
+        self._cierre_cb = QCheckBox("CIERRE JUNIO")
+        self._cierre_cb.setStyleSheet(f"""
+            QCheckBox {{ color: {COLOR_TEXT}; font-size: 12px; font-weight: 600; spacing: 6px; }}
+            QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {COLOR_BORDER};
+                background: {COLOR_INPUT}; }}
+            QCheckBox::indicator:checked {{ background: #4CAF50; border-color: #4CAF50; }}
+        """)
+        self._cierre_cb.setCursor(Qt.PointingHandCursor)
+        self._cierre_cb.toggled.connect(self._toggle_cierre)
+        filter_bar.addWidget(self._cierre_cb)
 
         luckysheet_btn = QPushButton("Editar diseño")
         luckysheet_btn.setStyleSheet(f"QPushButton {{ padding: 0 16px; height: 32px; border: 1px solid {COLOR_BORDER}; background: transparent; color: {COLOR_TEXT_MUTED}; font-size: 12px; }} QPushButton:hover {{ background: {COLOR_HOVER}; color: {COLOR_TEXT}; }}")
@@ -412,6 +550,19 @@ class GradesView(QWidget):
 
         cols = _build_subject_grade_columns(subject)
 
+        if self._cierre_visible and cols:
+            sid = subject["id"]
+            cierre_col = ColumnDef(
+                id=f"{sid}_cierre", name="CIERRE JUNIO",
+                col_type=ColumnType.COMPUTED, group=cols[1].group,
+                width=72, formula="avg", heatmap=True,
+                tooltip="Cierre Junio (promedio T1-T2-T3)",
+            )
+            for i, c in enumerate(cols):
+                if c.id == f"{sid}_estado":
+                    cols.insert(i, cierre_col)
+                    break
+
         def load_cell(row_id, col_def):
             meta = col_def.meta
             if "subject_id" in meta and "period" in meta:
@@ -442,8 +593,56 @@ class GradesView(QWidget):
         self._proxy = GradeProxyModel()
         self._proxy.setSourceModel(self._model)
         self.spreadsheet.setModel(self._proxy)
+
+        if self._cierre_visible:
+            cierre_idx = -1
+            for i, c in enumerate(cols):
+                if c.id.endswith("_cierre"):
+                    cierre_idx = i
+                    break
+            mt = self.spreadsheet.main_table
+            existing = mt.horizontalHeader()
+            ch = _CierreHeader()
+            ch.set_cierre_idx(cierre_idx)
+            ch.setStretchLastSection(False)
+            ch.setSectionResizeMode(QHeaderView.Interactive)
+            mt.setHorizontalHeader(ch)
+            self._cierre_header = ch
+            existing.deleteLater()
+        else:
+            self._cierre_header = None
+
         self._apply_search()
         self._update_footer()
+
+    def _toggle_cierre(self, checked):
+        self._cierre_visible = checked
+        self._load_grades()
+
+    def _import_acta(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Importar ACTA de notas",
+            "", "Excel (*.xlsx);;Todos (*)",
+        )
+        if not path:
+            return
+        from exporters.excel_importer import import_grades_from_excel
+        diff, errors, summary = import_grades_from_excel(path)
+        if not diff and not errors:
+            QMessageBox.information(self, "Importación", "No se encontraron datos para importar.")
+            return
+        dlg = ImportPreviewDialog(diff, errors, summary, self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        accepted = dlg._accepted
+        QMessageBox.information(
+            self, "Importación completada",
+            f"{accepted} notas importadas.\n"
+            f"{summary.get('same', 0)} sin cambios.\n"
+            f"{summary.get('conflicts', 0)} conflictos resueltos.\n"
+            + (f"{summary.get('errors', 0)} errores ignorados." if summary.get('errors') else "")
+        )
+        self.refresh()
 
     def _update_footer(self):
         while self._footer_layout.count():

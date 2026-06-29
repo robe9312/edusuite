@@ -64,14 +64,12 @@ def lerp_color(c1, c2, t):
 
 
 HEATMAP_COLORS = [
-    ("#6B0F1A", 0.0),
-    ("#B71C1C", 0.15),
-    ("#E65100", 0.3),
-    ("#F9A825", 0.45),
-    ("#CDDC39", 0.55),
-    ("#66BB6A", 0.7),
-    ("#26A69A", 0.85),
-    ("#5E81F4", 1.0),
+    ("#D32F2F", 0.0),
+    ("#D32F2F", 0.49),
+    ("#F9A825", 0.5),
+    ("#F9A825", 0.69),
+    ("#4CAF50", 0.7),
+    ("#4CAF50", 1.0),
 ]
 
 
@@ -93,7 +91,9 @@ def heatmap_text_color(score):
         return COLOR_TEXT_MUTED
     if score < 5.0:
         return "#ffffff"
-    return "#000000"
+    if score < 7.0:
+        return "#000000"
+    return "#ffffff"
 
 
 SUPABASE_URL = ""
