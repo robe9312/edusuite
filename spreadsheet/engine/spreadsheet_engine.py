@@ -24,8 +24,10 @@ class SpreadsheetEngine:
         self.events = EventBus()
 
     def get_cell(self, row: int, col: int) -> GridCell:
-        cell = self.cache.get(row, col)
-        return cell if cell else GridCell.blank()
+        cached = self.cache.get(row, col)
+        if cached is not None:
+            return cached
+        return self.grid.cell(row, col)
 
     def set_cell(self, row: int, col: int, cell: GridCell) -> None:
         old = self.get_cell(row, col)
