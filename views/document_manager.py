@@ -53,7 +53,7 @@ class DocumentManagerView(QWidget):
         hl = QHBoxLayout(self._header_widget)
         hl.setContentsMargins(24, 16, 24, 12)
 
-        title = QLabel("Documentos")
+        title = QLabel("Editor de Plantillas")
         title.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {COLOR_TEXT};")
         hl.addWidget(title)
 
@@ -355,10 +355,8 @@ class DocumentManagerView(QWidget):
         self._doc_service.open(doc_id)
         editor = getattr(self.main, "_editor_instance", None)
         if editor:
-            self._doc_service.load_into_editor(editor)
-            self.main.stack.setCurrentWidget(editor)
-            name = self._current_doc.get("name", "Documento")
-            self.main.header_bar.set_breadcrumb(f"Inicio / Editor - {name}")
+            self._doc_service.load_into_editor(editor, doc_id)
+            editor._toggle_fullscreen()
 
     def _duplicate_document(self):
         if not self._current_doc:

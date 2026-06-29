@@ -192,16 +192,32 @@ class DocumentService:
     def to_luckysheet(self) -> List[dict]:
         return self._adapter.save()
 
-    def load_into_editor(self, editor_view) -> None:
-        if not editor_view or not self._engine:
+    def load_into_editor(self, editor_view, doc_id=None) -> None:
+        if not editor_view:
             return
-        ls_data = self._adapter.save()
+        ls_data = self._adapter.save() if self._engine else []
         meta = self._current_meta
         payload = {
             "sheetData": ls_data,
             "name": meta.get("name", "Documento"),
         }
-        editor_view.load_workbook(payload)
+        editor_view.load_workbook(payload, doc_id or self._current_id)
+
+    def save_workbook(self, doc_id: int, workbook_json: str) -> bool:
+        from db.database import save_document_version
+        try:
+            save_document_version(doc_id, workbook_json, comment="Auto-guardado")
+            return True
+        except Exception:
+            return False
+
+    def save_version(self, doc_id: int, workbook_json: str, comment: str = "") -> bool:
+        from db.database import save_document_version
+        try:
+            save_document_version(doc_id, workbook_json, comment=comment)
+            return True
+        except Exception:
+            return False
 
     def save_from_editor(self, editor_view) -> bool:
         if not editor_view or not self._current_id:

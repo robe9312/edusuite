@@ -71,7 +71,7 @@ PAGE_LABELS_SINGULAR = {
     "enrollment": "Matrícula",
     "gastos": "Gastos",
     "backup": "Backup",
-    "editor": "Documentos",
+    "editor": "Plantillas",
     "settings": "Configuración",
 }
 

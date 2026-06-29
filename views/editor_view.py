@@ -4,7 +4,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QMessageBox, QFrame, QSizePolicy,
+    QMessageBox, QFrame, QSizePolicy,
 )
 try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -14,12 +14,7 @@ except ImportError:
     except ImportError:
         QWebEngineView = None
 
-from db.database import (
-    get_connection, get_subject, get_distinct_courses,
-    get_students_by_course, get_grade, get_active_school_year, get_subjects_by_level,
-)
 from config import *
-from ui_style import Combo
 
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "luckysheet")
 DATA_FILE = "/tmp/edusuite_workbook.json"
@@ -245,9 +240,11 @@ class EditorView(QWidget):
         self.server = None
         self.port = self._find_port()
         self._disabled = QWebEngineView is None
+        self._current_doc_id = None
+        self._pending_save = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         if self._disabled:
@@ -280,62 +277,48 @@ class EditorView(QWidget):
         h.setContentsMargins(16, 8, 16, 8)
         h.setSpacing(8)
 
-        ls = f"color: {COLOR_TEXT_MUTED}; font-size: 12px;"
-
-        lbl = QLabel("Tipo")
-        lbl.setStyleSheet(ls)
+        lbl = QLabel("Editor de Plantillas")
+        lbl.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {COLOR_TEXT};")
         h.addWidget(lbl)
-        self.cb_type = Combo()
-        self.cb_type.addItems(["Hoja en blanco", "Calificaciones", "Matricula"])
-        h.addWidget(self.cb_type)
 
-        lbl = QLabel("Nivel")
-        lbl.setStyleSheet(ls)
-        h.addWidget(lbl)
-        self.cb_level = Combo()
-        h.addWidget(self.cb_level)
+        h.addStretch()
 
-        lbl = QLabel("Asignatura")
-        lbl.setStyleSheet(ls)
-        h.addWidget(lbl)
-        self.cb_subject = Combo()
-        h.addWidget(self.cb_subject)
-
-        lbl = QLabel("Periodo")
-        lbl.setStyleSheet(ls)
-        h.addWidget(lbl)
-        self.cb_period = Combo()
-        self.cb_period.addItems(["T1", "T2", "T3"])
-        h.addWidget(self.cb_period)
-
-        btn_load = QPushButton("Cargar datos")
-        btn_load.setStyleSheet(f"""
-            QPushButton {{ padding: 0 16px; height: 36px; border: none;
-                background: {COLOR_ACCENT}; color: #ffffff; font-size: 13px; }}
+        btn_save = QPushButton("Guardar")
+        btn_save.setStyleSheet(f"""
+            QPushButton {{ padding: 0 16px; height: 34px; border: none;
+                background: {COLOR_ACCENT}; color: #fff; font-size: 12px; font-weight: 600; }}
             QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
         """)
-        btn_load.clicked.connect(self.load_from_db)
-        h.addWidget(btn_load)
+        btn_save.clicked.connect(self._save_current)
+        h.addWidget(btn_save)
+
+        btn_new_ver = QPushButton("Guardar como nueva versión")
+        btn_new_ver.setStyleSheet(f"""
+            QPushButton {{ padding: 0 16px; height: 34px; border: 1px solid {COLOR_ACCENT};
+                background: transparent; color: {COLOR_ACCENT}; font-size: 12px; }}
+            QPushButton:hover {{ background: {COLOR_ACCENT}15; }}
+        """)
+        btn_new_ver.clicked.connect(self._save_new_version)
+        h.addWidget(btn_new_ver)
 
         btn_fullscreen = QPushButton("⛶ Pantalla completa")
         btn_fullscreen.setStyleSheet(f"""
-            QPushButton {{ padding: 0 12px; height: 36px; border: none;
-                background: {COLOR_ACCENT}; color: #ffffff; font-size: 12px; }}
-            QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
+            QPushButton {{ padding: 0 12px; height: 34px; border: none;
+                background: transparent; color: {COLOR_TEXT_MUTED}; font-size: 12px; }}
+            QPushButton:hover {{ background: {COLOR_HOVER}; color: {COLOR_TEXT}; }}
         """)
         btn_fullscreen.clicked.connect(self._toggle_fullscreen)
         h.addWidget(btn_fullscreen)
 
-        btn_import = QPushButton("Importar a DB")
-        btn_import.setStyleSheet(f"""
-            QPushButton {{ padding: 0 16px; height: 36px; border: none;
-                background: {COLOR_SUCCESS}; color: #ffffff; font-size: 13px; }}
-            QPushButton:hover {{ background: #5a7e5a; }}
+        btn_close = QPushButton("✕ Cerrar")
+        btn_close.setStyleSheet(f"""
+            QPushButton {{ padding: 0 14px; height: 34px; border: none;
+                background: transparent; color: {COLOR_DANGER}; font-size: 12px; }}
+            QPushButton:hover {{ background: #2a1a1a; }}
         """)
-        btn_import.clicked.connect(self.import_save)
-        h.addWidget(btn_import)
+        btn_close.clicked.connect(self._close_editor)
+        h.addWidget(btn_close)
 
-        h.addStretch()
         self._btn_fullscreen = btn_fullscreen
         return bar
 
@@ -356,113 +339,76 @@ class EditorView(QWidget):
         t.start()
 
     def refresh(self):
-        self.cb_type.setCurrentIndex(0)
-        self._refresh_levels()
+        self._current_doc_id = None
 
-    def _refresh_levels(self):
-        levels = get_distinct_courses()
-        self.cb_level.clear()
-        self.cb_level.addItem("Todos los niveles")
-        for lv in levels:
-            self.cb_level.addItem(lv)
-
-    def _on_level_change(self, idx):
-        if idx <= 0:
-            self.cb_subject.clear()
-            return
-        level = self.cb_level.currentText()
-        subs = get_subjects_by_level(level)
-        self.cb_subject.clear()
-        for s in subs:
-            self.cb_subject.addItem(s["name"], s["id"])
-
-    def load_from_db(self):
-        wtype = self.cb_type.currentText()
-        if wtype == "Calificaciones":
-            data = self._build_grades_data()
-        elif wtype == "Matricula":
-            data = self._build_enrollment_data()
+    def load_workbook(self, workbook_data, doc_id=None):
+        if isinstance(workbook_data, list):
+            name = workbook_data[0].get("name", "Editor") if workbook_data else "Editor"
+            data = {"name": name, "sheetData": workbook_data}
         else:
-            data = {
-                "name": "Nuevo libro",
-                "sheetData": [{"name": "Hoja1", "celldata": [], "config": {}}]
-            }
-        if data is None:
-            return
+            data = workbook_data
+        self._current_doc_id = doc_id
         with open(DATA_FILE, "w") as f:
             json.dump(data, f)
         try:
             os.remove(SAVE_FILE)
         except FileNotFoundError:
             pass
-        self.web.load(QUrl(f"http://localhost:{self.port}"))
-        self._status("Abierto en el editor interno")
+        if self.web:
+            self.web.load(QUrl(f"http://localhost:{self.port}"))
 
-    def _build_grades_data(self):
-        level = self.cb_level.currentText()
-        if level == "Todos los niveles" or not level:
-            QMessageBox.warning(self, "Aviso", "Selecciona un nivel.")
+    def _save_current(self):
+        self._auto_save_to_doc()
+        QMessageBox.information(self, "Guardado", "Documento guardado correctamente.")
+
+    def _save_new_version(self):
+        if not self._pending_save:
+            QMessageBox.information(self, "Sin cambios", "No hay datos nuevos para guardar.")
             return
-        subj_id = self.cb_subject.currentData()
-        if not subj_id:
-            QMessageBox.warning(self, "Aviso", "Selecciona una asignatura.")
+        if not self._current_doc_id:
+            QMessageBox.warning(self, "Error", "No hay documento abierto.")
             return
-        period = self.cb_period.currentText()
-        subject = get_subject(subj_id)
-        students = get_students_by_course(level)
-        if not students:
-            QMessageBox.information(self, "Sin datos", "No hay estudiantes en este nivel.")
+        from services import ServiceRegistry
+        ss = ServiceRegistry.instance().spreadsheet()
+        try:
+            data = json.loads(self._pending_save)
+            ss.doc_service.save_version(
+                self._current_doc_id,
+                json.dumps(data.get("sheetData", [])),
+                comment="Guardado desde editor"
+            )
+            self._pending_save = None
+            QMessageBox.information(self, "Versión guardada", "Nueva versión creada.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def _auto_save_to_doc(self):
+        if not self._pending_save or not self._current_doc_id:
             return
+        from services import ServiceRegistry
+        ss = ServiceRegistry.instance().spreadsheet()
+        try:
+            data = json.loads(self._pending_save)
+            ss.doc_service.save_workbook(
+                self._current_doc_id,
+                json.dumps(data.get("sheetData", []))
+            )
+            self._pending_save = None
+        except Exception:
+            pass
 
-        celldata = []
-        headers = ["Codigo", "Estudiante", "Curso", f"Nota ({period})", "Obs"]
-        for c, h in enumerate(headers):
-            celldata.append({"r": 0, "c": c, "v": {"v": h, "m": h, "bg": "#2a2a2a", "fc": "#ffffff"}})
-        for i, s in enumerate(students, 1):
-            g = get_grade(s["id"], subj_id, period)
-            score = g["score"] if g else ""
-            obs = g["obs"] if g and g.get("obs") else ""
-            celldata.append({"r": i, "c": 0, "v": {"v": s["code"], "m": s["code"]}})
-            celldata.append({"r": i, "c": 1, "v": {"v": s["nombre"], "m": s["nombre"]}})
-            celldata.append({"r": i, "c": 2, "v": {"v": s.get("curso", ""), "m": s.get("curso", "")}})
-            celldata.append({"r": i, "c": 3, "v": {"v": score, "m": str(score)}})
-            celldata.append({"r": i, "c": 4, "v": {"v": obs, "m": obs}})
-
-        return {
-            "name": f"{subject['name']} - {period}",
-            "sheetData": [{"name": f"{subject['name']} {period}", "celldata": celldata}]
-        }
-
-    def _build_enrollment_data(self):
-        year = get_active_school_year()
-        if not year:
-            QMessageBox.warning(self, "Aviso", "No hay un ano escolar activo.")
-            return
-        from db.database import get_enrollments_by_year
-        enrollments = get_enrollments_by_year(year["id"])
-        celldata = []
-        headers = ["Codigo", "Nombre", "Curso", "Nivel", "Total", "Pagado", "Estado"]
-        for c, h in enumerate(headers):
-            celldata.append({"r": 0, "c": c, "v": {"v": h, "m": h, "bg": "#2a2a2a", "fc": "#ffffff"}})
-        for i, e in enumerate(enrollments, 1):
-            grade_level = e.get("grade_level", "")
-            level_key = COURSE_TO_LEVEL.get(grade_level, "")
-            level_name = LEVEL_LABELS.get(level_key, grade_level)
-            
-            celldata.append({"r": i, "c": 0, "v": {"v": e["student_code"], "m": e["student_code"]}})
-            celldata.append({"r": i, "c": 1, "v": {"v": e["student_name"], "m": e["student_name"]}})
-            celldata.append({"r": i, "c": 2, "v": {"v": grade_level, "m": grade_level}})
-            celldata.append({"r": i, "c": 3, "v": {"v": level_name, "m": level_name}})
-            celldata.append({"r": i, "c": 4, "v": {"v": e["total_amount"], "m": str(e["total_amount"])}})
-            celldata.append({"r": i, "c": 5, "v": {"v": e["paid_amount"], "m": str(e["paid_amount"])}})
-            celldata.append({"r": i, "c": 6, "v": {"v": e["status"], "m": e["status"]}})
-        return {
-            "name": f"Matricula {year['label']}",
-            "sheetData": [{"name": f"Matricula {year['label']}", "celldata": celldata}]
-        }
-
-    def _status(self, msg):
-        self.setWindowTitle(msg)
+    def _close_editor(self):
+        if self._ls_window:
+            self._ls_window.close()
+            self._ls_window = None
+        self._auto_save_to_doc()
+        parent = self.parent()
+        while parent and not hasattr(parent, "stack"):
+            parent = parent.parent() if hasattr(parent, "parent") else None
+        if parent and hasattr(parent, "stack") and hasattr(parent, "_view_widgets"):
+            if "editor" in parent._view_widgets:
+                parent.stack.setCurrentWidget(parent._view_widgets["editor"])
+                parent.header_bar.set_breadcrumb("Inicio / Documentos")
 
     def _check_save(self):
         try:
@@ -470,26 +416,9 @@ class EditorView(QWidget):
                 content = f.read().strip()
             if content:
                 self._pending_save = content
-                self._status("Datos guardados desde el editor. Clic en 'Importar a DB'.")
                 os.remove(SAVE_FILE)
         except FileNotFoundError:
             pass
-
-
-    def load_workbook(self, workbook_data):
-        if isinstance(workbook_data, list):
-            name = workbook_data[0].get("name", "Editor") if workbook_data else "Editor"
-            data = {"name": name, "sheetData": workbook_data}
-        else:
-            data = workbook_data
-        with open(DATA_FILE, "w") as f:
-            json.dump(data, f)
-        try:
-            os.remove(SAVE_FILE)
-        except FileNotFoundError:
-            pass
-        self.web.load(QUrl(f"http://localhost:{self.port}"))
-        self._status("Libro cargado en el editor")
 
     def _toggle_fullscreen(self):
         if hasattr(self, "_ls_window") and self._ls_window:
@@ -509,20 +438,4 @@ class EditorView(QWidget):
     def on_luckysheet_closed(self):
         self._ls_window = None
         self._btn_fullscreen.setText("⛶ Pantalla completa")
-
-    def import_save(self):
-        if not hasattr(self, "_pending_save") or not self._pending_save:
-            QMessageBox.information(self, "Sin datos", "No hay datos pendientes. Guarda desde el editor primero.")
-            return
-        try:
-            data = json.loads(self._pending_save)
-            from engine.meta_engine import MetaEngine
-            engine = MetaEngine()
-            project_name = data.get("name", "Editor")
-            project_id = engine.get_or_create_project(project_name)
-            version_id = engine.save_version(project_id, json.dumps(data.get("sheetData", [])))
-            self._pending_save = None
-            QMessageBox.information(self, "Importado", f"Datos guardados como versión {version_id} del proyecto '{project_name}'.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
 

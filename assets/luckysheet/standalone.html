@@ -8,7 +8,6 @@
 <link rel="stylesheet" href="plugins/plugins.css">
 <link rel="stylesheet" href="css/luckysheet.css">
 <link rel="stylesheet" href="assets/iconfont/iconfont.css">
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1c2e; }
@@ -29,79 +28,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1c2e; }
 .btn-outline { background: transparent; color: #8888aa; border: 1px solid #3a3d4e !important; }
 .btn-outline:hover { background: #2a2d3e; color: #ccc; }
 #fileInput { display: none; }
-.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; }
-.modal { background: #1e2030; border: 1px solid #2a2d3e; border-radius: 12px; padding: 24px; min-width: 380px; max-width: 500px; color: #ccc; font-size: 13px; }
-.modal h3 { color: #fff; font-size: 16px; margin: 0 0 16px; }
-.modal label { display: block; margin: 10px 0 4px; color: #8888aa; font-size: 12px; }
-.modal input[type=text] { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #2a2d3e; background: #121420; color: #fff; font-size: 13px; }
-.modal select { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid #2a2d3e; background: #121420; color: #fff; font-size: 13px; }
-.modal .row { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
-.modal .row button { padding: 8px 20px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; font-weight: 600; }
-.section-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #2a2d3e; }
-.section-item:last-child { border: none; }
-.section-item .name { flex: 1; color: #ccc; font-size: 13px; }
-.section-item .del { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px; padding: 2px 8px; border-radius: 4px; }
-.section-item .del:hover { background: #2a1a1a; }
+.savebar-title { color: #fff; font-size: 14px; font-weight: 600; }
 </style>
 </head>
 <body>
 <div id="savebar">
-  <span class="title">EduSuite Editor</span>
-  <button class="btn-save" onclick="showSaveDialog()">Guardar</button>
-  <button class="btn-import" onclick="document.getElementById('fileInput').click()">Importar</button>
-  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="importFile(event)">
-  <button class="btn-primary" onclick="showManageDialog()">Secciones</button>
+  <span class="savebar-title">EduSuite Editor — Plantillas</span>
   <span class="spacer"></span>
   <span id="status"></span>
 </div>
 <div id="luckysheet"></div>
-
-<!-- Save dialog -->
-<div class="modal-overlay" id="saveDialog">
-  <div class="modal">
-    <h3>Guardar como seccion</h3>
-    <label>Nombre</label>
-    <input type="text" id="saveName" placeholder="Ej: Notas 1A">
-    <label>Descripcion</label>
-    <input type="text" id="saveDesc" placeholder="Opcional">
-    <label>Tipo</label>
-    <select id="saveType">
-      <option value="spreadsheet">General</option>
-      <option value="gradebook">Notas</option>
-      <option value="attendance">Asistencia</option>
-      <option value="schedule">Horario</option>
-      <option value="inventory">Inventario</option>
-    </select>
-    <label>Color</label>
-    <div style="display:flex;gap:6px;margin-top:4px;" id="colorPicker">
-      <div data-color="#5e81f4" data-selected="1" style="width:28px;height:28px;border-radius:14px;background:#5e81f4;cursor:pointer;border:2px solid #fff;"></div>
-      <div data-color="#22c55e" style="width:28px;height:28px;border-radius:14px;background:#22c55e;cursor:pointer;border:2px solid transparent;"></div>
-      <div data-color="#f59e0b" style="width:28px;height:28px;border-radius:14px;background:#f59e0b;cursor:pointer;border:2px solid transparent;"></div>
-      <div data-color="#ef4444" style="width:28px;height:28px;border-radius:14px;background:#ef4444;cursor:pointer;border:2px solid transparent;"></div>
-      <div data-color="#8b5cf6" style="width:28px;height:28px;border-radius:14px;background:#8b5cf6;cursor:pointer;border:2px solid transparent;"></div>
-      <div data-color="#ec4899" style="width:28px;height:28px;border-radius:14px;background:#ec4899;cursor:pointer;border:2px solid transparent;"></div>
-      <div data-color="#14b8a6" style="width:28px;height:28px;border-radius:14px;background:#14b8a6;cursor:pointer;border:2px solid transparent;"></div>
-      <div data-color="#64748b" style="width:28px;height:28px;border-radius:14px;background:#64748b;cursor:pointer;border:2px solid transparent;"></div>
-    </div>
-    <label>Destino</label>
-    <select id="saveDest"><option value="">-- Nueva seccion --</option></select>
-    <div class="row">
-      <button class="btn-outline" onclick="closeModal('saveDialog')">Cancelar</button>
-      <button class="btn-save" onclick="confirmSave()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- Manage sections dialog -->
-<div class="modal-overlay" id="manageDialog">
-  <div class="modal">
-    <h3>Gestionar secciones</h3>
-    <div id="sectionList"></div>
-    <div class="row">
-      <button class="btn-outline" onclick="closeModal('manageDialog')">Cerrar</button>
-    </div>
-  </div>
-</div>
 
 <script src="plugins/js/plugin.js"></script>
 <script src="luckysheet.umd.min.js"></script>
@@ -148,126 +84,12 @@ function getFirstSheetHeaders() {
     return row0.map(function(c) { return { name: String(c.v.v || c.v.m || 'Col' + (c.c+1)) }; });
 }
 
-function importFile(event) {
-    var file = event.target.files[0];
-    if (!file) return;
-    setStatus('Leyendo archivo...');
-    var reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            var data = new Uint8Array(e.target.result);
-            var wb = XLSX.read(data, { type: 'array', cellDates: true, raw: true });
-            var sheets = [];
-            wb.SheetNames.forEach(function(name) {
-                var ws = wb.Sheets[name];
-                var ref = ws['!ref'];
-                if (!ref) return;
-                var range = XLSX.utils.decode_range(ref);
-                var celldata = [];
-                for (var r = range.s.r; r <= range.e.r; r++) {
-                    for (var c = range.s.c; c <= range.e.c; c++) {
-                        var addr = XLSX.utils.encode_cell({ r: r, c: c });
-                        var cell = ws[addr];
-                        if (!cell) continue;
-                        var v = cell.v;
-                        var m = cell.w !== undefined ? cell.w : String(v);
-                        if (v instanceof Date) { v = v.toISOString().split('T')[0]; m = v; }
-                        celldata.push({ r: r, c: c, v: { v: v, m: m } });
-                    }
-                }
-                sheets.push({ name: name, celldata: celldata, config: {} });
-            });
-            var existing = luckysheet.getluckysheetfile();
-            var existingCount = existing && existing.data ? existing.data.length : 0;
-            sheets.forEach(function(s, i) {
-                luckysheet.addSheet({ sheetName: s.name, sheetData: s.celldata, index: existingCount + i + 1 });
-            });
-            setStatus('Importado: ' + sheets.length + ' hoja(s) desde ' + file.name);
-            autoSave();
-        } catch(err) {
-            setStatus('Error: ' + err.message);
-        }
-    };
-    reader.readAsArrayBuffer(file);
-    event.target.value = '';
-}
-
-function showSaveDialog() {
-    document.getElementById('saveDest').innerHTML = '<option value="">-- Nueva seccion --</option>';
-    document.getElementById('saveName').value = '';
-    fetch('/sections').then(function(r) { return r.json(); }).then(function(secs) {
-        var sel = document.getElementById('saveDest');
-        secs.forEach(function(s) {
-            var opt = document.createElement('option');
-            opt.value = s.id;
-            opt.textContent = s.icon + ' ' + s.name + ' (' + s.columns_count + ' col)';
-            sel.appendChild(opt);
-        });
-    }).catch(function() {});
-    showModal('saveDialog');
-    setTimeout(function() { document.getElementById('saveName').focus(); }, 100);
-}
-
-function confirmSave() {
-    var name = document.getElementById('saveName').value.trim();
-    if (!name) { setStatus('Ingresa un nombre'); return; }
-    var destId = document.getElementById('saveDest').value;
-    var desc = document.getElementById('saveDesc').value.trim();
-    var type = document.getElementById('saveType').value;
-    var color = document.querySelector('#colorPicker div[data-selected]')?.getAttribute('data-color') || '#5e81f4';
-    closeModal('saveDialog');
-
-    var file = luckysheet.getluckysheetfile();
-    var payload = { name: name, description: desc, type: type, color: color, workbook: file.data };
-    if (destId) {
-        payload.section_id = parseInt(destId);
-    } else {
-        payload.key = 'sec_' + name.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'sec_' + Date.now();
-    }
-
-    setStatus('Guardando...');
-    fetch('/save_as_section', { method: 'POST', body: JSON.stringify(payload) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d.status === 'ok') {
-                setStatus('Guardado: ' + d.rows + ' fila(s)');
-            } else {
-                setStatus('Error: ' + (d.msg || 'desconocido'));
-            }
-        }).catch(function(e) { setStatus('Error: ' + e.message); });
-}
-
-function showManageDialog() {
-    setStatus('Cargando secciones...');
-    fetch('/sections').then(function(r) { return r.json(); }).then(function(secs) {
-        var el = document.getElementById('sectionList');
-        if (secs.length === 0) {
-            el.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No hay secciones personalizadas</div>';
-        } else {
-            el.innerHTML = secs.map(function(s) {
-                return '<div class="section-item">' +
-                    '<span class="name">' + s.icon + ' ' + s.name + ' (' + s.columns_count + ' col)</span>' +
-                    '<button class="del" onclick="confirmDelete(' + s.id + ', \'' + s.name.replace(/'/g, "\\'") + '\')">✕</button>' +
-                    '</div>';
-            }).join('');
-        }
-        showModal('manageDialog');
-        setStatus('');
-    }).catch(function(e) { setStatus('Error: ' + e.message); });
-}
-
-function confirmDelete(secId, secName) {
-    if (!confirm('¿Eliminar la seccion "' + secName + '" y todos sus datos?')) return;
-    fetch('/delete_section', { method: 'POST', body: JSON.stringify({ section_id: secId }) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d.status === 'ok') {
-                setStatus('Seccion eliminada: ' + secName);
-                showManageDialog();
-            } else {
-                setStatus('Error: ' + (d.msg || 'desconocido'));
-            }
-        }).catch(function(e) { setStatus('Error: ' + e.message); });
+function autoSave() {
+    try {
+        var sd = getSheetData();
+        fetch('/save', { method: 'POST', body: JSON.stringify({ gridKey: sd.gridKey, name: sd.title, sheetData: sd.sheets }) })
+            .then(function(r) { return r.json(); }).then(function(d) {}).catch(function() {});
+    } catch(e) {}
 }
 
 function autoSave() {
@@ -283,28 +105,10 @@ function startAutoSave() {
     _autoSaveTimer = setInterval(autoSave, 10000);
 }
 
-function showModal(id) { document.getElementById(id).style.display = 'flex'; }
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-
 function setStatus(msg) {
     document.getElementById('status').textContent = msg;
     if (msg) setTimeout(function() { setStatus(''); }, 4000);
 }
-
-document.addEventListener('click', function(e) {
-    var cp = e.target.closest('#colorPicker div');
-    if (cp) {
-        document.querySelectorAll('#colorPicker div').forEach(function(d) { d.style.borderColor = 'transparent'; d.removeAttribute('data-selected'); });
-        cp.style.borderColor = '#fff';
-        cp.setAttribute('data-selected', '1');
-    }
-});
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        document.querySelectorAll('.modal-overlay').forEach(function(m) { m.style.display = 'none'; });
-    }
-});
 
 fetch('/data').then(function(r) { return r.json(); }).then(function(d) {
     window.autoSaveReady = true;
