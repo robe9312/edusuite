@@ -27,6 +27,7 @@ CURSOS_VALIDOS = [
 ]
 
 VIEW_PERMISSIONS = {
+    "inicio": "Inicio",
     "dashboard": "Panel de control",
     "grades": "Notas",
     "students": "Estudiantes",
@@ -1358,9 +1359,9 @@ class Database:
             ).fetchall()]
             if len(grades) < limit:
                 enrollments = [dict(r) for r in conn.execute(
-                    """SELECT 'enrollment' as type, created_at as ts, nombre as student, curso
-                       FROM students WHERE active=1 AND created_at IS NOT NULL
-                       ORDER BY created_at DESC LIMIT ?""",
+                    """SELECT 'enrollment' as type, updated_at as ts, nombre as student, curso
+                       FROM students WHERE active=1 AND updated_at IS NOT NULL
+                       ORDER BY updated_at DESC LIMIT ?""",
                     (limit - len(grades),),
                 ).fetchall()]
                 grades.extend(enrollments)
