@@ -18,7 +18,6 @@ NAV_ITEMS = [
     ("asignaturas", "\U0001f4dd", "Asignaturas"),
     ("matricula", "\U0001f4bc", "Matrícula"),
     ("gastos", "\U0001f4b0", "Gastos"),
-    ("editor", "\U0001f4c1", "Plantillas"),
     ("backup", "\u26a0\ufe0f", "Backup"),
     ("configuracion", "\u2699\ufe0f", "Configuración"),
 ]

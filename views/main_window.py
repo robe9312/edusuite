@@ -25,9 +25,7 @@ from views.enrollment_view import EnrollmentView
 from views.expenses_view import ExpensesView
 from views.subjects_view import SubjectsView
 from views.backup_view import BackupView
-from views.editor_view import EditorView
 from views.settings_view import SettingsView
-from views.document_manager import DocumentManagerView
 from widgets.custom_section_view import CustomSectionView
 from widgets.workbook_renderer import WorkbookRenderView
 
@@ -41,7 +39,6 @@ SIDEBAR_TO_KEY = {
     "matricula": "enrollment",
     "gastos": "expenses",
     "backup": "backup",
-    "editor": "editor",
     "configuracion": "settings",
 }
 
@@ -54,12 +51,9 @@ VIEW_CLASSES = {
     "subjects": SubjectsView,
     "enrollment": EnrollmentView,
     "expenses": ExpensesView,
-    "editor": DocumentManagerView,
     "backup": BackupView,
     "settings": SettingsView,
 }
-
-EDITOR_VIEW_KEYS = {"editor"}
 
 PAGE_LABELS_SINGULAR = {
     "inicio": "Inicio",
@@ -71,7 +65,6 @@ PAGE_LABELS_SINGULAR = {
     "enrollment": "Matrícula",
     "gastos": "Gastos",
     "backup": "Backup",
-    "editor": "Plantillas",
     "settings": "Configuración",
 }
 
@@ -139,13 +132,6 @@ class MainWindow(QMainWindow):
                 self.stack.addWidget(view)
                 self._view_index[perm_key] = self.stack.indexOf(view)
                 self._view_keys.append(perm_key)
-        if has_permission("editor"):
-            self._editor_instance = EditorView(self)
-            self.stack.addWidget(self._editor_instance)
-            self._editor_index = self.stack.indexOf(self._editor_instance)
-        else:
-            self._editor_instance = None
-            self._editor_index = -1
 
     def _setup_status(self):
         user = current_user()
@@ -242,17 +228,28 @@ class MainWindow(QMainWindow):
         self._show_first_available()
 
     def _edit_workbook_section(self, section_key):
-        from db.database import get_document
-        ss = ServiceRegistry.instance().spreadsheet()
-        docs = ss.doc_service.list_documents(search=section_key)
-        doc = docs[0] if docs else None
-        if doc:
-            ss.doc_service.open(doc["id"])
-            editor = self._editor_instance
-            if editor:
-                ss.doc_service.load_into_editor(editor)
-                self.stack.setCurrentWidget(editor)
-                self.header_bar.set_breadcrumb(f"Inicio / Editor - {doc.get('name', 'Documento')}")
+        from db.database import get_custom_section
+        sec = get_custom_section(section_key)
+        if not sec:
+            return
+        from widgets.luckysheet_window import LuckySheetWindow
+        from views.editor_view import _write_workbook_data
+        _write_workbook_data(sec.get("workbook_json", "[]"), sec.get("name", "Sección"))
+        import socket
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        from http.server import HTTPServer
+        from views.editor_view import _Handler
+        from engine.meta_engine import MetaEngine
+        _Handler.engine = MetaEngine()
+        srv = HTTPServer(("127.0.0.1", port), _Handler)
+        import threading
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        self._ls_window = LuckySheetWindow(port, self)
+        self._ls_window.showMaximized()
 
     def _navigate(self, sidebar_key):
         perm_key = SIDEBAR_TO_KEY.get(sidebar_key, sidebar_key)

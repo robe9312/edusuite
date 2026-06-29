@@ -21,6 +21,21 @@ DATA_FILE = "/tmp/edusuite_workbook.json"
 SAVE_FILE = "/tmp/edusuite_save.json"
 
 
+def _write_workbook_data(workbook_json, name="Sección"):
+    import json
+    data = json.loads(workbook_json) if isinstance(workbook_json, str) else workbook_json
+    if isinstance(data, list):
+        payload = {"sheetData": data, "name": name}
+    else:
+        payload = data
+    with open(DATA_FILE, "w") as f:
+        json.dump(payload, f)
+    try:
+        os.remove(SAVE_FILE)
+    except FileNotFoundError:
+        pass
+
+
 def _extract_sheet_data(sheet):
     """Extract (headers, rows) from a LuckySheet sheet object.
     Handles both celldata (flat {r,c,v}) and data (2D array) formats.

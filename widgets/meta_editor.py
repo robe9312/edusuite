@@ -11,10 +11,21 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHeaderView, QTableView
 
 from config import *
-from services import ServiceRegistry
-from spreadsheet.services import DocumentService
+from db.database import (
+    get_all_custom_sections, get_custom_section,
+    create_custom_section, delete_custom_section,
+)
 from spreadsheet import SpreadsheetEngine, WorkbookAdapter, MemoryDataSource
 from widgets.workbook_renderer import EngineSheetModel
+
+
+SECTION_TYPES = [
+    ("📘", "GradeBook"),
+    ("📋", "Attendance"),
+    ("📅", "Schedule"),
+    ("📦", "Inventory"),
+    ("📄", "Template"),
+]
 
 
 def _active_area(grid):
@@ -30,12 +41,17 @@ def _active_area(grid):
     return max_r + 1, max_c + 1
 
 
+def _get_icon_for_type(t):
+    for icon, name in SECTION_TYPES:
+        if name == t:
+            return icon
+    return "📄"
+
+
 class _SectionRow(QFrame):
-    def __init__(self, doc: dict, doc_service: DocumentService,
-                 on_edit: Callable, on_delete: Callable):
+    def __init__(self, section: dict, on_edit: Callable, on_delete: Callable):
         super().__init__()
-        self._doc = doc
-        self._doc_service = doc_service
+        self._section = section
         self._on_edit = on_edit
         self._on_delete = on_delete
 
@@ -49,17 +65,25 @@ class _SectionRow(QFrame):
         lay.setContentsMargins(16, 12, 16, 12)
         lay.setSpacing(8)
 
-        # Name row
+        # Name
+        icon = section.get("icon", "📄")
         name_row = QHBoxLayout()
-        icon = doc.get("icon", "\U0001f4c4")
         icon_lbl = QLabel(icon)
         icon_lbl.setStyleSheet("font-size: 18px;")
         name_row.addWidget(icon_lbl)
-
-        name_lbl = QLabel(doc["name"])
+        name_lbl = QLabel(section["name"])
         name_lbl.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {COLOR_TEXT};")
         name_row.addWidget(name_lbl)
         name_row.addStretch()
+
+        stype = section.get("type", "")
+        if stype:
+            badge = QLabel(stype)
+            badge.setStyleSheet(f"""
+                background: {COLOR_ACCENT}22; color: {COLOR_ACCENT};
+                font-size: 10px; padding: 2px 8px; font-weight: 600;
+            """)
+            name_row.addWidget(badge)
         lay.addLayout(name_row)
 
         # Preview
@@ -69,8 +93,8 @@ class _SectionRow(QFrame):
         self._load_preview()
 
         # Actions
-        act_row = QHBoxLayout()
-        act_row.setSpacing(8)
+        act = QHBoxLayout()
+        act.setSpacing(8)
 
         edit_btn = QPushButton("Editar")
         edit_btn.setCursor(Qt.PointingHandCursor)
@@ -82,8 +106,8 @@ class _SectionRow(QFrame):
             }}
             QPushButton:hover {{ background: {COLOR_ACCENT_HOVER}; }}
         """)
-        edit_btn.clicked.connect(lambda: self._on_edit(self._doc["id"]))
-        act_row.addWidget(edit_btn)
+        edit_btn.clicked.connect(lambda: self._on_edit(section["section_key"]))
+        act.addWidget(edit_btn)
 
         del_btn = QPushButton("Eliminar")
         del_btn.setCursor(Qt.PointingHandCursor)
@@ -95,14 +119,14 @@ class _SectionRow(QFrame):
             }}
             QPushButton:hover {{ background: {COLOR_DANGER}15; }}
         """)
-        del_btn.clicked.connect(lambda: self._on_delete(self._doc["id"]))
-        act_row.addWidget(del_btn)
+        del_btn.clicked.connect(lambda: self._on_delete(section["section_key"]))
+        act.addWidget(del_btn)
 
-        act_row.addStretch()
-        lay.addLayout(act_row)
+        act.addStretch()
+        lay.addLayout(act)
 
     def _load_preview(self):
-        wb_json = self._doc_service.latest_workbook(self._doc["id"])
+        wb_json = self._section.get("workbook_json")
         if not wb_json:
             empty = QLabel("(sin datos)")
             empty.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: 11px; padding: 4px 0;")
@@ -123,6 +147,7 @@ class _SectionRow(QFrame):
                 self._preview.addWidget(empty)
                 return
 
+            from spreadsheet.datasource.memory_source import MemoryDataSource
             source = MemoryDataSource(rows, cols)
             engine = SpreadsheetEngine(grid, source)
             model = EngineSheetModel(engine)
@@ -159,8 +184,6 @@ class _SectionRow(QFrame):
 class MetaEditorWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._doc_service: DocumentService = ServiceRegistry.instance().spreadsheet().doc_service
-        self._categories: list = []
         self._rows: list[_SectionRow] = []
 
         layout = QVBoxLayout(self)
@@ -168,7 +191,7 @@ class MetaEditorWidget(QWidget):
         layout.setSpacing(0)
 
         header = QFrame()
-        header.setStyleSheet(f"background: transparent;")
+        header.setStyleSheet("background: transparent;")
         hl = QHBoxLayout(header)
         hl.setContentsMargins(0, 0, 0, 12)
 
@@ -209,11 +232,7 @@ class MetaEditorWidget(QWidget):
         scroll.setWidget(self._container)
         layout.addWidget(scroll, 1)
 
-        self._load_categories()
         self.refresh()
-
-    def _load_categories(self):
-        self._categories = self._doc_service.get_categories()
 
     def refresh(self):
         for r in self._rows:
@@ -225,13 +244,13 @@ class MetaEditorWidget(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-        docs = self._doc_service.list_documents()
-        for doc in docs:
-            row = _SectionRow(doc, self._doc_service, self._edit, self._delete)
+        sections = get_all_custom_sections()
+        for sec in sections:
+            row = _SectionRow(sec, self._edit, self._delete)
             self._rows.append(row)
             self._list_layout.addWidget(row)
 
-        if not docs:
+        if not sections:
             empty = QLabel("No hay secciones. Crea la primera con «+ Nueva sección».")
             empty.setAlignment(Qt.AlignCenter)
             empty.setStyleSheet(f"color: {COLOR_TEXT_DIM}; font-size: 13px; padding: 40px;")
@@ -239,15 +258,17 @@ class MetaEditorWidget(QWidget):
 
         self._list_layout.addStretch()
 
-    def _edit(self, doc_id: int):
-        self._doc_service.open(doc_id)
-        from widgets.luckysheet_window import LuckySheetWindow
+    def _edit(self, section_key: str):
+        sec = get_custom_section(section_key)
+        if not sec:
+            return
+        from views.editor_view import _write_workbook_data
+        _write_workbook_data(sec.get("workbook_json", "[]"), sec.get("name", "Sección"))
         import socket
         s = socket.socket()
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
         s.close()
-
         from http.server import HTTPServer
         from views.editor_view import _Handler
         from engine.meta_engine import MetaEngine
@@ -256,38 +277,22 @@ class MetaEditorWidget(QWidget):
         import threading
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
-
-        ls_data = self._doc_service.adapter.save()
-        meta = self._doc_service.meta
-        import json, os
-        DATA_FILE = "/tmp/edusuite_workbook.json"
-        SAVE_FILE = "/tmp/edusuite_save.json"
-        payload = {"sheetData": ls_data, "name": meta.get("name", "Documento")}
-        with open(DATA_FILE, "w") as f:
-            json.dump(payload, f)
-        try:
-            os.remove(SAVE_FILE)
-        except FileNotFoundError:
-            pass
-
+        from widgets.luckysheet_window import LuckySheetWindow
         self._ls_window = LuckySheetWindow(port, self)
+        self._ls_window.destroyed.connect(self.refresh)
         self._ls_window.showMaximized()
-        self._ls_window.destroyed.connect(self._on_editor_closed)
 
-    def _on_editor_closed(self):
-        self.refresh()
-
-    def _delete(self, doc_id: int):
-        doc = self._doc_service.meta if self._doc_service.current_id == doc_id else None
-        name = doc.get("name", "sección") if doc else "sección"
+    def _delete(self, section_key: str):
         reply = QMessageBox.question(
             self, "Eliminar sección",
-            f"¿Desea eliminar la sección?",
+            "¿Desea eliminar la sección?",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
-        self._doc_service.delete(doc_id)
+        sec = get_custom_section(section_key)
+        if sec:
+            delete_custom_section(sec["id"])
         self.refresh()
 
     def _new_section(self):
@@ -317,8 +322,8 @@ class MetaEditorWidget(QWidget):
                 border: 1px solid {COLOR_BORDER}; padding: 6px;
             }}
         """)
-        for cat in self._categories:
-            type_combo.addItem(f"{cat.get('icon', '')}  {cat['name']}", cat["id"])
+        for icon, name in SECTION_TYPES:
+            type_combo.addItem(f"{icon}  {name}", name)
         form.addRow("Tipo:", type_combo)
 
         desc_input = QTextEdit()
@@ -346,11 +351,18 @@ class MetaEditorWidget(QWidget):
             QMessageBox.warning(self, "Error", "El nombre es obligatorio.")
             return
 
-        doc_id = self._doc_service.create(
-            name=name,
-            category_id=type_combo.currentData(),
-            description=desc_input.toPlainText().strip(),
+        stype = type_combo.currentData()
+        icon = _get_icon_for_type(stype)
+        desc = desc_input.toPlainText().strip()
+        import re
+        key = "sec_" + re.sub(r'[^a-z0-9_]', '', name.lower().replace(" ", "_"))
+
+        sec_id = create_custom_section(
+            section_key=key, name=name,
+            columns_json="[]", icon=icon,
+            workbook_json=None, description=desc,
+            color="#5e81f4", type=stype,
         )
-        if doc_id:
+        if sec_id:
             self.refresh()
-            self._edit(doc_id)
+            self._edit(key)
