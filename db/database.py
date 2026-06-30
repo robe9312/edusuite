@@ -88,6 +88,7 @@ class Database:
             else:
                 self._create_all_tables(conn)
             self._fix_grades_fk(conn)
+            self._link_sections_to_documents(conn)
         self._seed_subjects()
         self._seed_roles()
         self._seed_admin()
@@ -179,6 +180,37 @@ class Database:
             for row in data:
                 conn.execute(f"INSERT INTO {table}({col_names}) VALUES ({placeholders})", row)
         conn.execute("PRAGMA foreign_keys=ON")
+
+    def _link_sections_to_documents(self, conn):
+        cur = conn.execute(
+            "SELECT id, name, icon, color, description, sort_order FROM custom_sections WHERE document_id IS NULL"
+        )
+        orphan_sections = cur.fetchall()
+        if not orphan_sections:
+            return
+        default_cat = conn.execute(
+            "SELECT id FROM document_categories WHERE name = 'Document'"
+        ).fetchone()
+        cat_id = default_cat["id"] if default_cat else 6
+        for sec in orphan_sections:
+            sec_id, name = sec[0], sec[1]
+            icon = sec[2] if len(sec) > 2 else "📄"
+            color = sec[3] if len(sec) > 3 else "#5e81f4"
+            description = sec[4] if len(sec) > 4 else ""
+            sort_order = sec[5] if len(sec) > 5 else 0
+            cur_doc = conn.execute(
+                "INSERT INTO documents (name, category_id, description, icon, color, settings_json) VALUES (?, ?, ?, ?, ?, ?)",
+                (name, cat_id, description, icon, color, "{}"),
+            )
+            new_doc_id = cur_doc.lastrowid
+            conn.execute(
+                "INSERT INTO document_instances (document_id, current_version) VALUES (?, 0)",
+                (new_doc_id,),
+            )
+            conn.execute(
+                "UPDATE custom_sections SET document_id = ? WHERE id = ?",
+                (new_doc_id, sec_id),
+            )
 
     def _create_all_tables(self, conn):
         self._create_students_table(conn)
@@ -928,7 +960,11 @@ class Database:
                     "INSERT INTO component_defs (component_id, json_blob, version) VALUES (?, ?, ?)",
                     (component_id, json_blob, version),
                 )
-                return conn.lastrowid
+                cur = conn.execute(
+                    "INSERT INTO component_defs (component_id, json_blob, version) VALUES (?, ?, ?)",
+                    (component_id, json_blob, version),
+                )
+                return cur.lastrowid
 
     def get_latest_component_def(self, component_id):
         with self._connect() as conn:
@@ -1766,6 +1802,11 @@ class Database:
                     conn.execute(
                         "INSERT INTO document_instances (document_id, current_version) VALUES (?, 0)", (doc_id,),
                     )
+                # Link the section to its newly created document.
+                conn.execute(
+                    "UPDATE custom_sections SET document_id = ? WHERE id = ?",
+                    (doc_id, sec["id"]),
+                )
 
     # ── CRUD: Documentos ──────────────────────────────────────────────────
 
@@ -1790,7 +1831,8 @@ class Database:
     def get_all_documents(self, category_id=None, school_year=None, archived=False, search=None):
         with self._connect() as conn:
             sql = "SELECT d.*, dc.name AS category_name, dc.icon AS category_icon FROM documents d LEFT JOIN document_categories dc ON dc.id = d.category_id WHERE d.is_archived = ?"
-            params = [1 if archived else 0]
+            params = []
+            params.append(1 if archived else 0)
             if category_id:
                 sql += " AND d.category_id = ?"
                 params.append(category_id)
@@ -1825,6 +1867,14 @@ class Database:
 
     def restore_document(self, doc_id):
         self.update_document(doc_id, is_archived=0)
+
+    def update_section_document_id(self, section_id, document_id):
+        """Update the document_id of a custom section."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE custom_sections SET document_id = ? WHERE id = ?",
+                (document_id, section_id),
+            )
 
     def save_document_version(self, doc_id, workbook_json, comment="", created_by=""):
         with self._connect() as conn:
@@ -2389,6 +2439,11 @@ def duplicate_document(doc_id, new_name=None):
 
 def get_document_categories():
     return _db.get_document_categories()
+
+
+def update_section_document_id(section_id, document_id):
+    """Update the document_id of a custom section."""
+    return _db.update_section_document_id(section_id, document_id)
 
 def get_document_instances(doc_id):
     return _db.get_document_instances(doc_id)

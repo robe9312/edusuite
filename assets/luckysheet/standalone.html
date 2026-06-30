@@ -70,7 +70,22 @@ function loadSheet(data) {
         opts.data = data.sheetData;
     }
     luckysheet.create(opts);
+    if (typeof luckysheet.on === 'function') {
+        luckysheet.on('cellEdited', function () { scheduleSave(true); });
+        luckysheet.on('sheetActivate', function () { scheduleSave(false); });
+    }
     if (window.autoSaveReady) startAutoSave();
+    scheduleSave(true);
+}
+
+var _saveDebounce = null;
+function scheduleSave(immediate) {
+    if (_saveDebounce) clearTimeout(_saveDebounce);
+    if (immediate) {
+        _saveDebounce = setTimeout(function () { _saveDebounce = null; doSave(); }, 600);
+    } else {
+        _saveDebounce = setTimeout(function () { _saveDebounce = null; doSave(); }, 1500);
+    }
 }
 
 function getSheetData() {
@@ -112,9 +127,34 @@ function startAutoSave() {
 }
 
 function setStatus(msg) {
-    document.getElementById('status').textContent = msg;
+    var el = document.getElementById('status');
+    if (el) el.textContent = msg;
     if (msg) setTimeout(function() { setStatus(''); }, 3000);
 }
+
+function syncSendSave(bodyStr) {
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/save', false);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(bodyStr);
+    } catch (e) {}
+}
+
+window.addEventListener('beforeunload', function () {
+    try {
+        var sd = getSheetData();
+        var payload = JSON.stringify({ gridKey: sd.gridKey, name: sd.title, sheetData: sd.sheets });
+        syncSendSave(payload);
+    } catch (e) {}
+});
+window.addEventListener('pagehide', function () {
+    try {
+        var sd = getSheetData();
+        var payload = JSON.stringify({ gridKey: sd.gridKey, name: sd.title, sheetData: sd.sheets });
+        syncSendSave(payload);
+    } catch (e) {}
+});
 
 fetch('/data').then(function(r) { return r.json(); }).then(function(d) {
     window.autoSaveReady = true;

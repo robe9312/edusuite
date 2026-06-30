@@ -228,7 +228,14 @@ class MainWindow(QMainWindow):
             return
         from widgets.luckysheet_window import LuckySheetWindow
         from views.editor_view import _write_workbook_data, _Handler
-        _write_workbook_data(sec.get("workbook_json", "[]"), sec.get("name", "Sección"), section_id=sec.get("id"))
+        from spreadsheet.services import DocumentService
+        wb_json = sec.get("workbook_json")
+        if not wb_json:
+            doc_id = sec.get("document_id")
+            if doc_id:
+                doc_svc = DocumentService()
+                wb_json = doc_svc.latest_workbook(doc_id) or "[]"
+        _write_workbook_data(wb_json or "[]", sec.get("name", "Sección"), section_id=sec.get("id"))
         import socket
         s = socket.socket()
         s.bind(("127.0.0.1", 0))

@@ -68,8 +68,8 @@ class DocumentService:
         self._adapter.add_sheet(name or "Sheet 1")
         self._adapter.name = name
 
-        grid = self._adapter.sheet(0)
-        source = MemoryDataSource()
+        grid = self._adapter.sheet(0) or MemoryGrid()
+        source = MemoryDataSource(grid.row_count(), grid.col_count())
         self._engine = SpreadsheetEngine(grid, source)
         self._current_id = doc_id
         self._current_meta = {
@@ -189,9 +189,7 @@ class DocumentService:
 
     def load_luckysheet(self, sheets: List[dict]) -> None:
         self._adapter.load(sheets)
-        grid = self._adapter.sheet(0)
-        if grid is None:
-            return
+        grid = self._adapter.sheet(0) or MemoryGrid()
         source = MemoryDataSource(grid.row_count(), grid.col_count())
         self._engine = SpreadsheetEngine(grid, source)
 

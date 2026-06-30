@@ -142,7 +142,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json("{}")
         elif self.path == "/templates":
             if self.engine:
-                projects = self.engine.list_projects(active_only=False)
+                projects = self.engine.list_projects(active_only=False) if self.engine else []
                 out = json.dumps([{"id": p["id"], "name": p["name"]} for p in projects])
             else:
                 out = "[]"
@@ -186,10 +186,16 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 with open(SECTION_ID_FILE, "r") as f:
                     sid = f.read().strip()
+                log_msg(f"SAVE_BODY size={len(body)} body[:200]={body[:200]!r}")
+            except FileNotFoundError:
+                sid = ""
+            try:
                 if sid:
                     from db.database import update_section_workbook, get_custom_section, save_document_version
                     data = json.loads(body)
                     sheet_data = data.get("sheetData", data.get("sheets", []))
+                    if not isinstance(sheet_data, list):
+                        sheet_data = []
                     wb_json = json.dumps(sheet_data)
                     log_msg(f"SAVE section_id={sid} wb_size={len(sheet_data)} sheets")
                     update_section_workbook(int(sid), wb_json)
@@ -199,17 +205,24 @@ class _Handler(BaseHTTPRequestHandler):
                         log_msg(f"SAVE sec_name={sec.get('name')} doc_id={doc_id}")
                         if doc_id:
                             save_document_version(doc_id, wb_json, comment="Editado desde editor")
-                            log_msg(f"SAVE version saved doc_id={doc_id}")
                         else:
-                            from db.database import create_document
-                            doc_id = create_document(name=sec.get("name", "Sección"))
+                            # Create a new document for this section
+                            from db.database import create_document, save_document_version, update_section_document_id
+                            doc_id = create_document(
+                                name=sec.get("name"),
+                                category_id=1,  # Default category
+                                description="",
+                                icon="\U0001f4c4",
+                                color="#5e81f4",
+                                school_year="",
+                                settings_json="{{}}",
+                            )
+                            # Save the initial version
                             save_document_version(doc_id, wb_json, comment="Versión inicial")
-                            from db.database import update_custom_section_meta
-                            update_custom_section_meta(int(sid), document_id=doc_id)
+                            update_section_document_id(int(sid), doc_id)
                             log_msg(f"SAVE new_doc created doc_id={doc_id}")
             except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
                 log_msg(f"SAVE_ERROR {e}")
-                pass
             self._send_json('{"status":"ok"}')
         elif self.path == "/save_template" and self.engine:
             try:
@@ -260,17 +273,60 @@ class _Handler(BaseHTTPRequestHandler):
                     existing = get_custom_section(section_id)
                     if existing:
                         delete_custom_section(section_id)
-                        section_id = create_custom_section(existing["section_key"], existing["name"], json.dumps([{"name": h} for h in headers]), existing.get("icon", "📄"), workbook_json, meta_desc, meta_color, meta_type)
+                        doc_id = existing.get("document_id")
+                        section_id = create_custom_section(
+                            existing["section_key"], existing["name"],
+                            json.dumps([{"name": h} for h in headers]),
+                            existing.get("icon", "\U0001f4c4"),
+                            workbook_json, meta_desc, meta_color, meta_type,
+                            document_id=doc_id,
+                        )
+                        if doc_id and workbook_json:
+                            from db.database import save_document_version
+                            save_document_version(doc_id, workbook_json, comment="Actualizado desde editor")
+                        for row in rows:
+                            add_custom_section_row(section_id, json.dumps(row))
+                        self._send_json('{"status":"ok","section_id":' + str(section_id) + ',"rows":' + str(len(rows)) + '}')
                     else:
                         self._send_json('{"status":"error","msg":"Seccion no encontrada"}')
-                        return
                 else:
                     key = data.get("key", "sec_" + str(int(__import__("time").time())))
-                    section_id = create_custom_section(key, meta_name, json.dumps([{"name": h} for h in headers]), "📄", workbook_json, meta_desc, meta_color, meta_type)
+                    meta_desc = data.get("description", "")
+                    meta_color = data.get("color", "#5e81f4")
+                    meta_type = data.get("type", "spreadsheet")
 
-                for row in rows:
-                    add_custom_section_row(section_id, json.dumps(row))
-                self._send_json('{"status":"ok","section_id":' + str(section_id) + ',"rows":' + str(len(rows)) + '}')
+                    from db.database import create_document, save_document_version, create_custom_section
+                    doc_id = create_document(
+                        name=meta_name,
+                        category_id=1,
+                        description=meta_desc,
+                        icon="\U0001f4c4",
+                        color=meta_color,
+                        school_year="",
+                        settings_json="{}",
+                    )
+                    save_document_version(
+                        doc_id=doc_id,
+                        workbook_json=workbook_json,
+                        comment="Versión inicial de la sección",
+                        created_by="system",
+                    )
+                    columns_json = json.dumps([{"name": h} for h in headers])
+                    new_section_id = create_custom_section(
+                        section_key=key,
+                        name=meta_name,
+                        columns_json=columns_json,
+                        icon="\U0001f4c4",
+                        workbook_json=workbook_json,
+                        description=meta_desc,
+                        color=meta_color,
+                        type=meta_type,
+                        sort_order=0,
+                        document_id=doc_id,
+                    )
+                    for row in rows:
+                        add_custom_section_row(new_section_id, json.dumps(row))
+                    self._send_json('{"status":"ok","section_id":' + str(new_section_id) + ',"document_id":' + str(doc_id) + '}')
             except Exception as e:
                 self._send_json('{"status":"error","msg":"' + str(e).replace('"', "'") + '"}')
         elif self.path == "/delete_section":
@@ -291,7 +347,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data.encode("utf-8"))
 
-    def log_message(self, *a):
+    def log_message(self, format, *args):
         pass
 
 
@@ -320,8 +376,9 @@ class EditorView(QWidget):
         toolbar = self._build_toolbar()
         layout.addWidget(toolbar)
 
-        self.web = QWebEngineView()
-        self.web.setStyleSheet("border: none;")
+        self.web = QWebEngineView() if QWebEngineView is not None else None
+        if self.web:
+            self.web.setStyleSheet("border: none;")
         layout.addWidget(self.web)
 
         self._ls_window = None
@@ -393,7 +450,7 @@ class EditorView(QWidget):
 
     def _start_server(self):
         from engine.meta_engine import MetaEngine
-        _Handler.engine = MetaEngine()
+        handler_class = type('_Handler', (_Handler,), {'engine': MetaEngine()})
         srv = HTTPServer(("127.0.0.1", self.port), _Handler)
         self.server = srv
         t = threading.Thread(target=srv.serve_forever, daemon=True)
