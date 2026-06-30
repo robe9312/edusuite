@@ -36,8 +36,8 @@ class StyleRenderer:
         font = QFont()
         ff = v.get("ff") or "Arial"
         font.setFamily(ff)
-        if v.get("fs"):
-            font.setPointSize(int(v["fs"]))
+        fs = v.get("fs")
+        font.setPointSize(int(fs) if fs else 11)
         if v.get("bl") == 1:
             font.setBold(True)
         if v.get("it") == 1:

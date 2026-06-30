@@ -16,8 +16,8 @@ class LayoutRenderer:
     Solo escribe el resultado en el `RenderContext`.
     """
 
-    DEFAULT_COL_WIDTH = 73
-    DEFAULT_ROW_HEIGHT = 20
+    DEFAULT_COL_WIDTH = 100
+    DEFAULT_ROW_HEIGHT = 28
 
     def __init__(self, context: RenderContext):
         self.ctx = context
