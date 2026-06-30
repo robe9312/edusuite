@@ -160,7 +160,7 @@ class WorkbookRenderView(QWidget):
         btn.clicked.connect(lambda: self.edit_requested.emit(sec.get("section_key", "")))
         h.addWidget(btn)
 
-        btn_del = QPushButton("Archivar")
+        btn_del = QPushButton("\u2716 Borrar")
         btn_del.setCursor(Qt.PointingHandCursor)
         btn_del.setStyleSheet(f"""
             QPushButton {{

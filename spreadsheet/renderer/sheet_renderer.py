@@ -29,10 +29,29 @@ class SheetRenderer:
 
     def __init__(self, context: RenderContext):
         self.ctx = context
+        self._normalize_sheet()
         self.layout = LayoutRenderer(context)
         self.styles = StyleRenderer()
         self.merges = MergeRenderer(context.sheet_data)
         self.celldata_index = self._index_celldata(context.sheet_data)
+
+    def _normalize_sheet(self) -> None:
+        sheet = self.ctx.sheet_data or {}
+        celldata = sheet.get("celldata")
+        if isinstance(celldata, list) and len(celldata) > 0:
+            return
+        data = sheet.get("data")
+        if isinstance(data, list) and len(data) > 0:
+            flat = []
+            for r, row in enumerate(data):
+                if not isinstance(row, list):
+                    continue
+                for c, cell in enumerate(row):
+                    if cell is not None:
+                        v = cell if isinstance(cell, dict) else {"v": cell, "m": str(cell)}
+                        flat.append({"r": r, "c": c, "v": v})
+            if flat:
+                sheet["celldata"] = flat
 
     def render(self, parent=None) -> QTableWidget:
         self.layout.compute()

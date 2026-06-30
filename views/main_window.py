@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QShortcut, QKeySequence
 import json
 
-from db.database import init_db, get_all_custom_sections, get_custom_section, archive_custom_section
+from db.database import init_db, get_all_custom_sections, get_custom_section
 from config import *
 from session import current_user, has_permission, logout
 from logs.logger import log as log_msg
@@ -202,17 +202,18 @@ class MainWindow(QMainWindow):
 
     def _delete_workbook_section(self, section_key):
         from PySide6.QtWidgets import QMessageBox
+        from db.database import delete_custom_section
         sec = get_custom_section(section_key)
         if not sec:
             return
         reply = QMessageBox.question(
-            self, "Archivar sección",
-            f"¿Archivar '{sec.get('name')}'? La sección se ocultará del panel lateral y podrá restaurarse.",
+            self, "Borrar sección",
+            f"¿Borrar permanentemente '{sec.get('name')}'? Todos los datos se eliminarán.",
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
-        archive_custom_section(sec["id"])
+        delete_custom_section(sec["id"])
         if section_key in self._view_widgets:
             w = self._view_widgets.pop(section_key)
             self.stack.removeWidget(w)
@@ -226,6 +227,7 @@ class MainWindow(QMainWindow):
         sec = get_custom_section(section_key)
         if not sec:
             return
+        self._editing_section_key = section_key
         from widgets.luckysheet_window import LuckySheetWindow
         from views.editor_view import _write_workbook_data, _Handler
         from spreadsheet.services import DocumentService
@@ -261,6 +263,10 @@ class MainWindow(QMainWindow):
             view_key = SECTION_TO_VIEW_KEY.get(sk, sk)
             if view_key not in self._view_widgets:
                 self._register_section_view(sec)
+        sk = getattr(self, '_editing_section_key', None)
+        if sk:
+            self._editing_section_key = None
+            self._navigate(sk)
 
     def _navigate(self, section_key):
         view_key = SECTION_TO_VIEW_KEY.get(section_key, section_key)

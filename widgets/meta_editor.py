@@ -16,7 +16,7 @@ from db.database import (
     create_custom_section, archive_custom_section, update_custom_section_meta,
 )
 from spreadsheet import SpreadsheetEngine, WorkbookAdapter, MemoryDataSource
-from widgets.workbook_renderer import EngineSheetModel
+from widgets.engine_sheet_model import EngineSheetModel
 
 
 SECTION_TYPES = [

@@ -17,7 +17,7 @@ from config import *
 from services import ServiceRegistry
 from spreadsheet.services import DocumentService
 from spreadsheet import MemoryGrid, SpreadsheetEngine, WorkbookAdapter, MemoryDataSource
-from widgets.workbook_renderer import EngineSheetModel
+from widgets.engine_sheet_model import EngineSheetModel
 
 
 class DocumentManagerView(QWidget):

@@ -26,10 +26,26 @@ class LayoutRenderer:
         ctx = self.ctx
         sheet = ctx.sheet_data or {}
         celldata = sheet.get("celldata") or []
+        if not celldata:
+            data = sheet.get("data")
+            if isinstance(data, list) and len(data) > 0:
+                celldata = self._data_to_celldata(data)
         config = sheet.get("config") or {}
 
         top, left, bottom, right = self._compute_active_area(celldata, config)
         ctx.top, ctx.left, ctx.bottom, ctx.right = top, left, bottom, right
+
+    @staticmethod
+    def _data_to_celldata(data):
+        flat = []
+        for r, row in enumerate(data):
+            if not isinstance(row, list):
+                continue
+            for c, cell in enumerate(row):
+                if cell is not None:
+                    v = cell if isinstance(cell, dict) else {"v": cell, "m": str(cell)}
+                    flat.append({"r": r, "c": c, "v": v})
+        return flat
 
     @staticmethod
     def _compute_active_area(celldata, config):
