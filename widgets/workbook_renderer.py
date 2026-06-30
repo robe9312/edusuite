@@ -12,7 +12,7 @@ from config import (
 )
 from logs.logger import log as log_msg
 from spreadsheet.services import DocumentService
-from spreadsheet.renderer import WorkbookRenderer, SheetRenderer
+from spreadsheet.renderer import WorkbookRenderer, SpreadsheetModel
 from .formula_engine import FormulaEngine
 
 
@@ -137,7 +137,9 @@ class WorkbookRenderView(QWidget):
                         font-size: 11px;
                     }}
                 """)
-                page.cellChanged.connect(self._on_cell_edited)
+                model = page.model()
+                if isinstance(model, SpreadsheetModel):
+                    model.cellEdited.connect(self._on_cell_edited)
                 self._tables.append(page)
         self._content_widget = container
         self._body_layout.addWidget(container)
@@ -149,31 +151,22 @@ class WorkbookRenderView(QWidget):
                 pass
             self._engine.cellsChanged.connect(self._on_engine_changed)
 
-    def _on_cell_edited(self, row: int, col: int) -> None:
+    def _on_cell_edited(self, row: int, col: int, value: object) -> None:
         if self._engine is None:
             return
-        table = self.sender()
-        if table is None:
+        model = self.sender()
+        if not isinstance(model, SpreadsheetModel):
             return
-        item = table.item(row, col)
-        if item is None:
-            return
-        new_text = item.text()
-        sheet_index = 0
-        for i, t in enumerate(self._tables):
-            if t is table:
-                sheet_index = i
-                break
-        self._engine.set_cell(sheet_index, row, col, new_text)
+        self._engine.set_cell(model.sheet_index, row, col, str(value) if value is not None else "")
 
     def _on_engine_changed(self, sheet_index: int, cells: list) -> None:
         if not cells:
             return
         if sheet_index < len(self._tables):
             table = self._tables[sheet_index]
-            sr = getattr(table, "_sheet_renderer", None)
-            if sr is not None:
-                sr.update_cells(table, cells)
+            model = table.model()
+            if isinstance(model, SpreadsheetModel):
+                model.update_cells(cells)
 
     def refresh(self):
         name = self.section.get("name", "?")

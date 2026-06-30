@@ -6,6 +6,7 @@ from .merge_renderer import MergeRenderer
 from .readonly_policy import ReadOnlyPolicy
 from .widget_factory import WidgetFactory
 from .render_context import RenderContext
+from .spreadsheet_model import SpreadsheetModel
 
 __all__ = [
     "WorkbookRenderer",
@@ -16,4 +17,5 @@ __all__ = [
     "ReadOnlyPolicy",
     "WidgetFactory",
     "RenderContext",
+    "SpreadsheetModel",
 ]

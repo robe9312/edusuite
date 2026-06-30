@@ -33,7 +33,24 @@ class StyleRenderer:
                 from PySide6.QtWidgets import QTableWidgetItem
                 item.setBackground(c) if isinstance(item, QTableWidgetItem) else None
 
+        font = self.cell_font(v)
+        from PySide6.QtWidgets import QTableWidgetItem
+        if isinstance(item, QTableWidgetItem):
+            item.setFont(font)
+
+        font_color = self._color(v.get("fc"))
+        if font_color:
+            if isinstance(item, QTableWidgetItem):
+                item.setForeground(font_color)
+
+        align = int(self.cell_alignment(v))
+        if isinstance(item, QTableWidgetItem):
+            item.setTextAlignment(align)
+
+    def cell_font(self, v: Optional[Dict[str, Any]]) -> QFont:
         font = QFont()
+        if not isinstance(v, dict):
+            return font
         ff = v.get("ff") or "Arial"
         font.setFamily(ff)
         fs = v.get("fs")
@@ -42,13 +59,21 @@ class StyleRenderer:
             font.setBold(True)
         if v.get("it") == 1:
             font.setItalic(True)
+        return font
 
-        font_color = self._color(v.get("fc"))
-        if font_color:
-            from PySide6.QtWidgets import QTableWidgetItem
-            if isinstance(item, QTableWidgetItem):
-                item.setForeground(font_color)
+    def cell_foreground(self, v: Optional[Dict[str, Any]]) -> Optional[QColor]:
+        if not isinstance(v, dict):
+            return None
+        return self._color(v.get("fc"))
 
+    def cell_background(self, v: Optional[Dict[str, Any]]) -> Optional[QColor]:
+        if not isinstance(v, dict):
+            return None
+        return self._color(v.get("bg"))
+
+    def cell_alignment(self, v: Optional[Dict[str, Any]]) -> Qt.AlignmentFlag:
+        if not isinstance(v, dict):
+            return Qt.AlignLeft | Qt.AlignVCenter
         ht = v.get("ht")
         vt = v.get("vt")
         align = Qt.AlignVCenter
@@ -64,11 +89,7 @@ class StyleRenderer:
             align |= Qt.AlignVCenter
         elif vt == 2:
             align |= Qt.AlignBottom
-
-        from PySide6.QtWidgets import QTableWidgetItem
-        if isinstance(item, QTableWidgetItem):
-            item.setTextAlignment(align)
-            item.setFont(font)
+        return align
 
     def display_value(self, v: Optional[Dict[str, Any]]) -> str:
         """Retorna el valor a mostrar: resultado de fórmula si existe, sino texto crudo."""

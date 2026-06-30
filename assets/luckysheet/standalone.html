@@ -49,6 +49,37 @@ var _saving = false;
 
 var isHeadless = location.search.indexOf('mode=headless') !== -1;
 
+/*
+ * Protocolo EduSuite ↔ Luckysheet (headless)
+ * ──────────────────────────────────────────
+ * Mensajes entrantes (Qt → JS via runJavaScript):
+ *   {type:"loadWorkbook", data:[sheets]}
+ *   {type:"setCell",       sheet, row, col, value}
+ *   {type:"setRange",      sheet, cells:[{row,col,value},...]}
+ *   {type:"clearRange",    sheet, startRow, startCol, endRow, endCol}
+ *   {type:"getWorkbook"}
+ *   {type:"saveWorkbook"}   — reservado
+ *   {type:"insertRow"}      — reservado
+ *   {type:"deleteRow"}      — reservado
+ *   {type:"insertColumn"}   — reservado
+ *   {type:"deleteColumn"}   — reservado
+ *   {type:"merge"}          — reservado
+ *   {type:"unmerge"}        — reservado
+ *   {type:"undo"}           — reservado
+ *   {type:"redo"}           — reservado
+ *   {type:"copy"}           — reservado
+ *   {type:"paste"}          — reservado
+ *   {type:"getSelection"}   — reservado
+ *
+ * Mensajes salientes (JS → Qt via return value):
+ *   {type:"changed", sheet, cells:[{r,c,v}]}
+ *   {type:"workbook", data:[{name,celldata,config}]}
+ *   {type:"error", message}
+ *
+ * cell.v es el diccionario completo de la celda Luckysheet {v,m,f,bg,fc,...}
+ * cells contiene solo las celdas que cambiaron (diff), nunca el workbook completo.
+ */
+
 if (isHeadless) {
     document.getElementById('savebar').style.display = 'none';
     document.getElementById('luckysheet').style.height = '100%';
@@ -90,43 +121,69 @@ if (isHeadless) {
         return null;
     }
 
-    window.__engineHandleMessage = function(msg) {
-        if (!_engineSheet) return JSON.stringify({type:'error',message:'Engine not loaded'});
-        if (msg.type === 'setCell') {
-            var si = msg.sheet || 0;
-            var files = _engineSheet;
-            if (!Array.isArray(files)) files = [files];
-            var file = files[si];
-            if (!file) return JSON.stringify({type:'error',message:'Sheet index out of range: '+si});
+    function _doEdit(si, editFn) {
+        var files = _engineSheet;
+        if (!Array.isArray(files)) files = [files];
+        var file = files[si];
+        if (!file) return JSON.stringify({type:'error',message:'Sheet index out of range: '+si});
 
-            if (si > 0) { try { luckysheet.setSheetActive(si); } catch(e) {} }
+        if (si > 0) { try { luckysheet.setSheetActive(si); } catch(e) {} }
 
-            var formulaBefore = _snapshotFormulas(files, si);
-            var editedBefore = _findCell(file.celldata || [], msg.row, msg.col);
+        var formulaBefore = _snapshotFormulas(files, si);
 
-            luckysheet.setCellValue(msg.row, msg.col, msg.value);
+        editFn(file);
 
-            var newCells = file.celldata || [];
-            var changed = [];
+        var newCells = file.celldata || [];
+        var changed = [];
 
-            var editedNow = _findCell(newCells, msg.row, msg.col);
-            if (JSON.stringify(editedNow) !== JSON.stringify(editedBefore)) {
-                changed.push({r: msg.row, c: msg.col, v: editedNow});
-            }
-
-            for (var i = 0; i < newCells.length; i++) {
-                var cell = newCells[i];
-                if (cell.v && typeof cell.v === 'object' && cell.v.f) {
-                    var key = cell.r + ':' + cell.c;
-                    if (JSON.stringify(cell.v) !== JSON.stringify(formulaBefore[key])) {
-                        changed.push({r: cell.r, c: cell.c, v: cell.v});
-                    }
+        for (var i = 0; i < newCells.length; i++) {
+            var cell = newCells[i];
+            if (cell.v && typeof cell.v === 'object' && cell.v.f) {
+                var key = cell.r + ':' + cell.c;
+                if (JSON.stringify(cell.v) !== JSON.stringify(formulaBefore[key])) {
+                    changed.push({r: cell.r, c: cell.c, v: cell.v});
                 }
             }
-
-            _engineSheet = luckysheet.getluckysheetfile();
-            return JSON.stringify({type:'changed', sheet: si, cells: changed});
         }
+
+        _engineSheet = luckysheet.getluckysheetfile();
+        return JSON.stringify({type:'changed', sheet: si, cells: changed});
+    }
+
+    window.__engineHandleMessage = function(msg) {
+        if (!_engineSheet) return JSON.stringify({type:'error',message:'Engine not loaded'});
+
+        if (msg.type === 'setCell') {
+            var si = msg.sheet || 0;
+            var editedBefore = _findCell((_engineSheet[si] || {}).celldata || [], msg.row, msg.col);
+            return _doEdit(si, function(file) {
+                luckysheet.setCellValue(msg.row, msg.col, msg.value);
+            });
+        }
+
+        if (msg.type === 'setRange') {
+            var si = msg.sheet || 0;
+            return _doEdit(si, function(file) {
+                for (var i = 0; i < msg.cells.length; i++) {
+                    var c = msg.cells[i];
+                    luckysheet.setCellValue(c.row, c.col, c.value);
+                }
+            });
+        }
+
+        if (msg.type === 'clearRange') {
+            var si = msg.sheet || 0;
+            return _doEdit(si, function(file) {
+                var sr = msg.startRow, sc = msg.startCol;
+                var er = msg.endRow, ec = msg.endCol;
+                for (var r = sr; r <= er; r++) {
+                    for (var c = sc; c <= ec; c++) {
+                        luckysheet.setCellValue(r, c, '');
+                    }
+                }
+            });
+        }
+
         if (msg.type === 'getWorkbook') {
             return JSON.stringify({type:'workbook', data:(function(){
                 var fs = luckysheet.getluckysheetfile();

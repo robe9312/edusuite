@@ -3,27 +3,26 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView,
+    QHeaderView, QTableView,
 )
 
 from .render_context import RenderContext
 from .layout_renderer import LayoutRenderer
 from .style_renderer import StyleRenderer
 from .merge_renderer import MergeRenderer
-from .readonly_policy import ReadOnlyPolicy
+from .spreadsheet_model import SpreadsheetModel
 
 
 class SheetRenderer:
     """
-    Renderiza UNA hoja del workbook en un `QTableWidget`.
+    Renderiza UNA hoja del workbook en un `QTableView`+`SpreadsheetModel`.
 
     Pipeline (NO hace otra cosa):
       Sheet JSON
         → Layout (área activa, tamaños)
-        → Style (fuente, color, alineación, formato)
+        → Model (SpreadsheetModel, estilo vía roles Qt)
         → Merge (setSpan)
-        → Widgets (placeholders en cada celda según tipo/bloqueo)
-        → QTableWidget
+        → QTableView
 
     No sabe de la aplicación ni del dominio.
     """
@@ -35,6 +34,7 @@ class SheetRenderer:
         self.styles = StyleRenderer()
         self.merges = MergeRenderer(context.sheet_data)
         self.celldata_index = self._index_celldata(context.sheet_data)
+        self.model: Optional[SpreadsheetModel] = None
 
     def _normalize_sheet(self) -> None:
         sheet = self.ctx.sheet_data or {}
@@ -54,12 +54,22 @@ class SheetRenderer:
             if flat:
                 sheet["celldata"] = flat
 
-    def render(self, parent=None) -> QTableWidget:
+    def render(self, parent=None) -> QTableView:
         self.layout.compute()
         rows = self.ctx.rows()
         cols = self.ctx.cols()
 
-        table = QTableWidget(rows, cols, parent)
+        self.model = SpreadsheetModel(
+            rows=rows,
+            cols=cols,
+            celldata_index=self.celldata_index,
+            styles=self.styles,
+            sheet_index=self.ctx.sheet_index,
+            parent=parent,
+        )
+
+        table = QTableView(parent)
+        table.setModel(self.model)
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setDefaultSectionSize(
             self.layout.DEFAULT_COL_WIDTH
@@ -74,18 +84,6 @@ class SheetRenderer:
             height = self.layout.row_height(r)
             table.setRowHeight(r, height)
 
-        for r in range(rows):
-            for c in range(cols):
-                cell_data = self.celldata_index.get((r, c))
-                item = QTableWidgetItem("")
-                if cell_data is not None:
-                    text = self.styles.display_value(cell_data)
-                    item.setText(text)
-                    self.styles.apply_to_item(item, cell_data)
-                    if not ReadOnlyPolicy.is_editable(cell_data):
-                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                table.setItem(r, c, item)
-
         for span in self.merges.spans():
             r, c, rs, cs = span["r"], span["c"], span["rs"], span["cs"]
             if r < rows and c < cols:
@@ -96,32 +94,10 @@ class SheetRenderer:
 
         return table
 
-    def update_cells(self, table: QTableWidget, changed: List[Dict[str, Any]]) -> None:
-        if not changed:
+    def update_cells(self, table: QTableView, changed: List[Dict[str, Any]]) -> None:
+        if not changed or self.model is None:
             return
-        table.blockSignals(True)
-        for cell in changed:
-            r = cell.get("r")
-            c = cell.get("c")
-            v = cell.get("v")
-            if r is None or c is None:
-                continue
-            if not isinstance(v, dict):
-                v = {"v": v}
-            self.celldata_index[(r, c)] = v
-            item = table.item(r, c)
-            if item is None:
-                if r >= table.rowCount() or c >= table.columnCount():
-                    continue
-                item = QTableWidgetItem("")
-                table.setItem(r, c, item)
-            item.setText(self.styles.display_value(v))
-            self.styles.apply_to_item(item, v)
-            if not ReadOnlyPolicy.is_editable(v):
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-            else:
-                item.setFlags(item.flags() | Qt.ItemIsEditable)
-        table.blockSignals(False)
+        self.model.update_cells(changed)
 
     @staticmethod
     def _index_celldata(sheet: Dict[str, Any]) -> Dict[Tuple[int, int], Dict[str, Any]]:
