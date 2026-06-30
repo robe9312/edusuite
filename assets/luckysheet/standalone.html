@@ -92,7 +92,24 @@ function getSheetData() {
     var files = luckysheet.getluckysheetfile();
     if (!Array.isArray(files)) files = [files];
     var sheets = files.map(function(f) {
-        return { name: f.name, celldata: f.celldata || [], config: f.config || {} };
+        var celldata = f.celldata;
+        if (!celldata || celldata.length === 0) {
+            celldata = [];
+            var grid = f.data;
+            if (grid && Array.isArray(grid)) {
+                for (var r = 0; r < grid.length; r++) {
+                    var row = grid[r];
+                    if (!Array.isArray(row)) continue;
+                    for (var c = 0; c < row.length; c++) {
+                        var cell = row[c];
+                        if (cell !== null && cell !== undefined) {
+                            celldata.push({r: r, c: c, v: cell});
+                        }
+                    }
+                }
+            }
+        }
+        return { name: f.name, celldata: celldata, config: f.config || {} };
     });
     return { gridKey: (files[0] || {}).gridKey, title: (files[0] || {}).title || 'Editor', sheetData: sheets };
 }

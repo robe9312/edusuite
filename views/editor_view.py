@@ -23,10 +23,35 @@ SAVE_FILE = "/tmp/edusuite_save.json"
 SECTION_ID_FILE = "/tmp/edusuite_section_id.txt"
 
 
+def _normalize_sheet_data(sheet):
+    """Ensure celldata is populated, converting from data (2D array) if needed."""
+    if not isinstance(sheet, dict):
+        return sheet
+    celldata = sheet.get("celldata")
+    if isinstance(celldata, list) and len(celldata) > 0:
+        return sheet
+    grid = sheet.get("data")
+    if isinstance(grid, list) and len(grid) > 0:
+        flat = []
+        for r, row in enumerate(grid):
+            if not isinstance(row, list):
+                continue
+            for c, cell in enumerate(row):
+                if cell is not None:
+                    v = cell if isinstance(cell, dict) else {"v": cell, "m": str(cell)}
+                    flat.append({"r": r, "c": c, "v": v})
+        if flat:
+            sheet["celldata"] = flat
+            sheet.pop("data", None)
+    return sheet
+
+
 def _write_workbook_data(workbook_json, name="Sección", section_id=None):
     import json
     data = json.loads(workbook_json) if isinstance(workbook_json, str) else workbook_json
     if isinstance(data, list):
+        for sheet in data:
+            _normalize_sheet_data(sheet)
         payload = {"sheetData": data, "name": name}
     else:
         payload = {"sheetData": [], "name": name}
