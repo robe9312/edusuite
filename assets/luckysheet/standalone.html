@@ -47,7 +47,98 @@ var gridKey = 'ls-' + Date.now();
 var _autoSaveTimer = null;
 var _saving = false;
 
-function loadSheet(data) {
+var isHeadless = location.search.indexOf('mode=headless') !== -1;
+
+if (isHeadless) {
+    document.getElementById('savebar').style.display = 'none';
+    document.getElementById('luckysheet').style.height = '100%';
+    var _engineSheet = null;
+
+    window.__engineLoadWorkbook = function(data) {
+        if (_engineSheet) { luckysheet.destroy(); _engineSheet = null; }
+        var opts = {
+            container: 'luckysheet', lang: 'es',
+            showinfobar: false, showsheetbar: false, showtoolbar: false,
+            enableAddRow: false, enableAddBackTop: false,
+            gridKey: 'ls-headless-' + Date.now(),
+            column: 26, row: 100, cellEditAhead: false, allowUpdate: true,
+            myFolderUrl: null
+        };
+        if (data) opts.data = Array.isArray(data) ? data : [];
+        luckysheet.create(opts);
+        _engineSheet = luckysheet.getluckysheetfile();
+    };
+
+    function _snapshotFormulas(files, si) {
+        var f = files[si];
+        if (!f) return {};
+        var snap = {};
+        var cells = f.celldata || [];
+        for (var i = 0; i < cells.length; i++) {
+            var c = cells[i];
+            if (c.v && typeof c.v === 'object' && c.v.f) {
+                snap[c.r + ':' + c.c] = JSON.parse(JSON.stringify(c.v));
+            }
+        }
+        return snap;
+    }
+
+    function _findCell(celldata, r, c) {
+        for (var i = 0; i < celldata.length; i++) {
+            if (celldata[i].r === r && celldata[i].c === c) return JSON.parse(JSON.stringify(celldata[i].v));
+        }
+        return null;
+    }
+
+    window.__engineHandleMessage = function(msg) {
+        if (!_engineSheet) return JSON.stringify({type:'error',message:'Engine not loaded'});
+        if (msg.type === 'setCell') {
+            var si = msg.sheet || 0;
+            var files = _engineSheet;
+            if (!Array.isArray(files)) files = [files];
+            var file = files[si];
+            if (!file) return JSON.stringify({type:'error',message:'Sheet index out of range: '+si});
+
+            if (si > 0) { try { luckysheet.setSheetActive(si); } catch(e) {} }
+
+            var formulaBefore = _snapshotFormulas(files, si);
+            var editedBefore = _findCell(file.celldata || [], msg.row, msg.col);
+
+            luckysheet.setCellValue(msg.row, msg.col, msg.value);
+
+            var newCells = file.celldata || [];
+            var changed = [];
+
+            var editedNow = _findCell(newCells, msg.row, msg.col);
+            if (JSON.stringify(editedNow) !== JSON.stringify(editedBefore)) {
+                changed.push({r: msg.row, c: msg.col, v: editedNow});
+            }
+
+            for (var i = 0; i < newCells.length; i++) {
+                var cell = newCells[i];
+                if (cell.v && typeof cell.v === 'object' && cell.v.f) {
+                    var key = cell.r + ':' + cell.c;
+                    if (JSON.stringify(cell.v) !== JSON.stringify(formulaBefore[key])) {
+                        changed.push({r: cell.r, c: cell.c, v: cell.v});
+                    }
+                }
+            }
+
+            _engineSheet = luckysheet.getluckysheetfile();
+            return JSON.stringify({type:'changed', sheet: si, cells: changed});
+        }
+        if (msg.type === 'getWorkbook') {
+            return JSON.stringify({type:'workbook', data:(function(){
+                var fs = luckysheet.getluckysheetfile();
+                return (Array.isArray(fs) ? fs : [fs]).map(function(f){
+                    return {name:f.name, celldata:f.celldata||[], config:f.config||{}};
+                });
+            })()});
+        }
+        return JSON.stringify({type:'error',message:'Unknown type: '+msg.type});
+    };
+} else {
+    function loadSheet(data) {
     data = data || { sheetData: [], name: 'Editor' };
     var titleEl = document.querySelector('.savebar-title');
     if (data.name && titleEl) titleEl.textContent = data.name;
@@ -177,12 +268,15 @@ window.addEventListener('pagehide', function () {
     } catch (e) {}
 });
 
-fetch('/data').then(function(r) { return r.json(); }).then(function(d) {
-    window.autoSaveReady = true;
-    loadSheet(d);
-}).catch(function(e) {
-    document.getElementById('savebar').innerHTML = '<span style="color:#ef4444;">Error al cargar datos: ' + e.message + '</span>';
-});
+}
+if (!isHeadless) {
+    fetch('/data').then(function(r) { return r.json(); }).then(function(d) {
+        window.autoSaveReady = true;
+        loadSheet(d);
+    }).catch(function(e) {
+        document.getElementById('savebar').innerHTML = '<span style="color:#ef4444;">Error al cargar datos: ' + e.message + '</span>';
+    });
+}
 </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -10,6 +10,7 @@ from .render_context import RenderContext
 from .layout_renderer import LayoutRenderer
 from .style_renderer import StyleRenderer
 from .merge_renderer import MergeRenderer
+from .readonly_policy import ReadOnlyPolicy
 
 
 class SheetRenderer:
@@ -81,6 +82,8 @@ class SheetRenderer:
                     text = self.styles.display_value(cell_data)
                     item.setText(text)
                     self.styles.apply_to_item(item, cell_data)
+                    if not ReadOnlyPolicy.is_editable(cell_data):
+                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 table.setItem(r, c, item)
 
         for span in self.merges.spans():
@@ -92,6 +95,33 @@ class SheetRenderer:
                     pass
 
         return table
+
+    def update_cells(self, table: QTableWidget, changed: List[Dict[str, Any]]) -> None:
+        if not changed:
+            return
+        table.blockSignals(True)
+        for cell in changed:
+            r = cell.get("r")
+            c = cell.get("c")
+            v = cell.get("v")
+            if r is None or c is None:
+                continue
+            if not isinstance(v, dict):
+                v = {"v": v}
+            self.celldata_index[(r, c)] = v
+            item = table.item(r, c)
+            if item is None:
+                if r >= table.rowCount() or c >= table.columnCount():
+                    continue
+                item = QTableWidgetItem("")
+                table.setItem(r, c, item)
+            item.setText(self.styles.display_value(v))
+            self.styles.apply_to_item(item, v)
+            if not ReadOnlyPolicy.is_editable(v):
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            else:
+                item.setFlags(item.flags() | Qt.ItemIsEditable)
+        table.blockSignals(False)
 
     @staticmethod
     def _index_celldata(sheet: Dict[str, Any]) -> Dict[Tuple[int, int], Dict[str, Any]]:

@@ -31,6 +31,7 @@ class WorkbookRenderer:
 
     def render(self, parent: Optional[QWidget] = None) -> QStackedWidget:
         stack = QStackedWidget(parent)
+        self._last_renderers: List[SheetRenderer] = []
 
         sheets = self._sheets()
         if not sheets:
@@ -47,7 +48,10 @@ class WorkbookRenderer:
                 theme=self.theme,
             )
             try:
-                sheet = SheetRenderer(ctx).render(parent=stack)
+                sr = SheetRenderer(ctx)
+                sheet = sr.render(parent=stack)
+                sheet._sheet_renderer = sr
+                self._last_renderers.append(sr)
             except Exception:
                 sheet = QLabel(f"Error al renderizar '{ctx.sheet_name}'.")
             stack.addWidget(sheet)
