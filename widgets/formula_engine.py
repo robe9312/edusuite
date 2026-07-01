@@ -66,7 +66,13 @@ class FormulaEngine(QObject):
         if QWebEngineView is None:
             return
         self._view = QWebEngineView()
-        self._view.setFixedSize(0, 0)
+        # Luckysheet necesita un viewport >= 800x600 para inicializar su grid
+        # (el div #luckysheet usa height:100%). Lo movemos off-screen para que
+        # el usuario nunca lo vea, pero conserva tamaño real.
+        self._view.setParent(None)
+        self._view.setWindowFlags(Qt.WindowType(Qt.Dialog))
+        self._view.setFixedSize(800, 600)
+        self._view.move(-9999, -9999)
         self._view.hide()
         self._view.page().setBackgroundColor(Qt.transparent)
         html_path = os.path.join(ASSETS_DIR, "standalone.html")
@@ -116,12 +122,19 @@ class FormulaEngine(QObject):
         if not isinstance(celldata, list):
             celldata = []
             sheet["celldata"] = celldata
-        idx: Dict[Tuple[int, int], int] = {}
-        for i, c in enumerate(celldata):
-            r = c.get("r")
-            cc = c.get("c")
-            if r is not None and cc is not None:
-                idx[(r, cc)] = i
+
+        # Rebuild full index from celldata
+        def _rebuild_index():
+            idx: Dict[Tuple[int, int], int] = {}
+            for i, c in enumerate(celldata):
+                rr = c.get("r")
+                cc = c.get("c")
+                if rr is not None and cc is not None:
+                    idx[(rr, cc)] = i
+            return idx
+
+        idx = _rebuild_index()
+
         for cell in cells:
             r = cell.get("r")
             c = cell.get("c")
@@ -129,11 +142,17 @@ class FormulaEngine(QObject):
             if r is None or c is None:
                 continue
             key = (r, c)
-            if key in idx:
-                celldata[idx[key]]["v"] = v
+            if v is None:
+                # Celda limpiada — quitamos del cache
+                if key in idx:
+                    celldata.pop(idx[key])
+                    idx = _rebuild_index()
             else:
-                idx[key] = len(celldata)
-                celldata.append({"r": r, "c": c, "v": v})
+                if key in idx:
+                    celldata[idx[key]]["v"] = v
+                else:
+                    idx[key] = len(celldata)
+                    celldata.append({"r": r, "c": c, "v": v})
 
     def set_cell(self, sheet: int, row: int, col: int, value: Any) -> None:
         msg = json.dumps({
@@ -179,6 +198,7 @@ class FormulaEngine(QObject):
             if isinstance(data, dict) and data.get("type") == "changed":
                 sheet = int(data.get("sheet", 0))
                 cells = data.get("cells", [])
+                print(f"📤 FormulaEngine: cellsChanged emitido - sheet={sheet}, celdas={len(cells)}")
                 self._apply_diff(sheet, cells)
                 self.cellsChanged.emit(sheet, cells)
         except (json.JSONDecodeError, TypeError):

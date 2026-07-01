@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "/home/rohdinn/EduSuite/views/main_window.py", line 302, in _navigate
+    w.refresh()
+    ~~~~~~~~~^^
+  File "/home/rohdinn/EduSuite/views/enrollment_view.py", line 485, in refresh
+    self._load_data()
+    ~~~~~~~~~~~~~~~^^
+  File "/home/rohdinn/EduSuite/views/enrollment_view.py", line 380, in _load_data
+    stats = get_enrollment_stats(year_id)
+  File "/home/rohdinn/EduSuite/db/database.py", line 2208, in get_enrollment_stats
+    return _db.get_enrollment_stats(school_year_id)
+           ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/rohdinn/EduSuite/db/database.py", line 1099, in get_enrollment_stats
+    row = conn.execute(
+          ~~~~~~~~~~~~^
+        """SELECT COUNT(*) AS total,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        (school_year_id,),
+        ^^^^^^^^^^^^^^^^^^
+    ).fetchone()
+    ^
+sqlite3.OperationalError: no such column: total_amount

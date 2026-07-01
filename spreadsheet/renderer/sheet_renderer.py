@@ -11,6 +11,7 @@ from .layout_renderer import LayoutRenderer
 from .style_renderer import StyleRenderer
 from .merge_renderer import MergeRenderer
 from .spreadsheet_model import SpreadsheetModel
+from .border_delegate import BorderDelegate
 
 
 class SheetRenderer:
@@ -70,19 +71,29 @@ class SheetRenderer:
 
         table = QTableView(parent)
         table.setModel(self.model)
-        table.verticalHeader().setVisible(False)
-        table.horizontalHeader().setDefaultSectionSize(
-            self.layout.DEFAULT_COL_WIDTH
-        )
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        table.setItemDelegate(BorderDelegate(table))
+        table.setShowGrid(True)
+        table.setAlternatingRowColors(True)
+        table.setSelectionMode(QTableView.SingleSelection)
+        table.setSelectionBehavior(QTableView.SelectItems)
+        table.setMouseTracking(True)
+
+        hh = table.horizontalHeader()
+        hh.setVisible(False)
+        hh.setDefaultSectionSize(self.layout.DEFAULT_COL_WIDTH)
+        hh.setSectionResizeMode(QHeaderView.Interactive)
+        hh.setStretchLastSection(False)
+
+        vh = table.verticalHeader()
+        vh.setVisible(False)
+        vh.setDefaultSectionSize(self.layout.DEFAULT_ROW_HEIGHT)
+        vh.setSectionResizeMode(QHeaderView.Fixed)
 
         for c in range(cols):
-            width = self.layout.column_width(c)
-            table.setColumnWidth(c, width)
+            table.setColumnWidth(c, self.layout.column_width(c))
 
         for r in range(rows):
-            height = self.layout.row_height(r)
-            table.setRowHeight(r, height)
+            table.setRowHeight(r, self.layout.row_height(r))
 
         for span in self.merges.spans():
             r, c, rs, cs = span["r"], span["c"], span["rs"], span["cs"]

@@ -17,6 +17,7 @@ COLOR_HOVER = sset.get("hover_color")
 
 COLOR_ACCENT = sset.get("accent_color")
 COLOR_ACCENT_HOVER = sset.get("accent_hover_color")
+COLOR_PRIMARY = sset.get("accent_color", "#4285f4")
 
 COLOR_TEXT = sset.get("text_color")
 COLOR_TEXT_MUTED = sset.get("text_muted")

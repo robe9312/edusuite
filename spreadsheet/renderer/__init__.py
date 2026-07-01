@@ -7,6 +7,7 @@ from .readonly_policy import ReadOnlyPolicy
 from .widget_factory import WidgetFactory
 from .render_context import RenderContext
 from .spreadsheet_model import SpreadsheetModel
+from .border_delegate import BorderDelegate
 
 __all__ = [
     "WorkbookRenderer",
@@ -18,4 +19,5 @@ __all__ = [
     "WidgetFactory",
     "RenderContext",
     "SpreadsheetModel",
+    "BorderDelegate",
 ]

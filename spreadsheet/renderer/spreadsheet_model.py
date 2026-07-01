@@ -70,6 +70,9 @@ class SpreadsheetModel(QAbstractTableModel):
         if role == Qt.ToolTipRole:
             return self._styles.display_value(cell)
 
+        if role == Qt.UserRole:
+            return cell
+
         return None
 
     def setData(
@@ -77,9 +80,9 @@ class SpreadsheetModel(QAbstractTableModel):
     ) -> bool:
         if role == Qt.EditRole and index.isValid():
             r, c = index.row(), index.column()
-            text = str(value) if value is not None else ""
-            self._index[(r, c)] = {"v": text, "m": text}
-            self.dataChanged.emit(index, index, [Qt.DisplayRole])
+            # No almacenar valor provisional — violaría "única fuente de verdad".
+            # La única representación editable es el Workbook en el engine.
+            # El diff del engine actualizará _index vía update_cells().
             self.cellEdited.emit(r, c, value)
             return True
         return False
@@ -91,6 +94,8 @@ class SpreadsheetModel(QAbstractTableModel):
         flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
         if ReadOnlyPolicy.is_editable(cell):
             flags |= Qt.ItemIsEditable
+        if self._styles.cell_wrap(cell):
+            flags |= Qt.TextWordWrap
         return flags
 
     # -----------------------------------------------------------------
@@ -111,9 +116,14 @@ class SpreadsheetModel(QAbstractTableModel):
             v = cell.get("v")
             if r is None or c is None:
                 continue
-            if not isinstance(v, dict):
-                v = {"v": v}
-            self._index[(r, c)] = v
+            key = (r, c)
+            if v is None:
+                # Celda limpiada — remover del índice
+                self._index.pop(key, None)
+            elif isinstance(v, dict):
+                self._index[key] = v
+            else:
+                self._index[key] = {"v": str(v), "m": str(v)}
             if r < min_r: min_r = r
             if r > max_r: max_r = r
             if c < min_c: min_c = c

@@ -9,6 +9,7 @@ Migración automática desde schema anterior (full_name, sex, age, ...).
 
 import os
 import sqlite3
+import contextlib
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -66,7 +67,7 @@ class Database:
     # ── Conexión ──────────────────────────────────────────────────────
 
     def _connect(self):
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(self.path, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
@@ -1094,17 +1095,18 @@ class Database:
             ).fetchall()]
 
     def get_enrollment_stats(self, school_year_id):
-        with self._connect() as conn:
+        with contextlib.closing(self._connect()) as conn:
             row = conn.execute(
                 """SELECT COUNT(*) AS total,
-                          SUM(CASE WHEN status = 'pagado' THEN 1 ELSE 0 END) AS pagados,
-                          SUM(CASE WHEN status = 'parcial' THEN 1 ELSE 0 END) AS parciales,
-                          SUM(CASE WHEN status = 'pendiente' THEN 1 ELSE 0 END) AS pendientes,
-                          COALESCE(SUM(total_amount), 0) AS total_esperado,
-                          COALESCE(SUM(paid_amount), 0) AS total_cobrado
+                          SUM(CASE WHEN payment_status = 'pagado' THEN 1 ELSE 0 END) AS pagados,
+                          SUM(CASE WHEN payment_status = 'parcial' THEN 1 ELSE 0 END) AS parciales,
+                          SUM(CASE WHEN payment_status = 'pendiente' THEN 1 ELSE 0 END) AS pendientes,
+                          COALESCE(SUM(amount), 0) AS total_esperado,
+                          COALESCE(SUM(CASE WHEN payment_status = 'pagado' THEN amount ELSE 0 END), 0) AS total_cobrado
                    FROM enrollment WHERE school_year_id = ?""",
                 (school_year_id,),
             ).fetchone()
+            conn.commit()
             return dict(row)
 
     def get_debtors(self, school_year_id, only_unpaid=False):
@@ -1658,8 +1660,11 @@ class Database:
             conn.execute("UPDATE custom_sections SET visible = 0 WHERE id = ?", (section_id,))
 
     def update_section_workbook(self, section_id, workbook_json):
-        with self._connect() as conn:
+        print(f"💾 Database: Actualizando sección {section_id} con workbook JSON (tamaño: {len(workbook_json)} bytes)")
+        with contextlib.closing(self._connect()) as conn:
             conn.execute("UPDATE custom_sections SET workbook_json = ? WHERE id = ?", (workbook_json, section_id))
+            conn.commit()
+        print("✅ Database: Sección actualizada correctamente")
 
     def add_custom_section_row(self, section_id, row_data_json):
         with self._connect() as conn:
@@ -1877,6 +1882,7 @@ class Database:
             )
 
     def save_document_version(self, doc_id, workbook_json, comment="", created_by=""):
+        print(f"💾 Database: Guardando versión para documento {doc_id} (tamaño: {len(workbook_json)} bytes)")
         with self._connect() as conn:
             max_ver = conn.execute(
                 "SELECT COALESCE(MAX(version), 0) + 1 AS next_ver FROM document_versions WHERE document_id = ?",
@@ -1886,19 +1892,20 @@ class Database:
                 "INSERT INTO document_versions (document_id, version, workbook_json, comment, created_by) VALUES (?, ?, ?, ?, ?)",
                 (doc_id, max_ver, workbook_json, comment, created_by),
             )
-            existing = conn.execute(
-                "SELECT 1 FROM document_instances WHERE document_id = ?", (doc_id,)
-            ).fetchone()
-            if existing:
-                conn.execute(
-                    "UPDATE document_instances SET current_version = ? WHERE document_id = ?",
-                    (max_ver, doc_id),
-                )
-            else:
-                conn.execute(
-                    "INSERT INTO document_instances (document_id, current_version) VALUES (?, ?)",
-                    (doc_id, max_ver),
-                )
+        print(f"✅ Database: Versión {max_ver} guardada para documento {doc_id}")
+        existing = conn.execute(
+            "SELECT 1 FROM document_instances WHERE document_id = ?", (doc_id,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE document_instances SET current_version = ? WHERE document_id = ?",
+                (max_ver, doc_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO document_instances (document_id, current_version) VALUES (?, ?)",
+                (doc_id, max_ver),
+            )
             return cur.lastrowid
 
     def get_document_versions(self, doc_id):

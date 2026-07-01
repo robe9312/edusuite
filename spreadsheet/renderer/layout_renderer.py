@@ -16,8 +16,8 @@ class LayoutRenderer:
     Solo escribe el resultado en el `RenderContext`.
     """
 
-    DEFAULT_COL_WIDTH = 100
-    DEFAULT_ROW_HEIGHT = 28
+    DEFAULT_COL_WIDTH = 73
+    DEFAULT_ROW_HEIGHT = 19
 
     def __init__(self, context: RenderContext):
         self.ctx = context
@@ -25,6 +25,19 @@ class LayoutRenderer:
     def compute(self) -> None:
         ctx = self.ctx
         sheet = ctx.sheet_data or {}
+
+        # Prefer metadata.active_area saved by the editor
+        meta = sheet.get("metadata") or {}
+        aa = meta.get("active_area")
+        if (aa and all(k in aa for k in ("top", "left", "bottom", "right"))
+                and aa["bottom"] >= aa["top"] and aa["right"] >= aa["left"]
+                and aa["bottom"] >= 0 and aa["right"] >= 0):
+            ctx.top = aa["top"]
+            ctx.left = aa["left"]
+            ctx.bottom = aa["bottom"]
+            ctx.right = aa["right"]
+            return
+
         celldata = sheet.get("celldata") or []
         if not celldata:
             data = sheet.get("data")
@@ -72,14 +85,21 @@ class LayoutRenderer:
                 if c > max_c:
                     max_c = c
 
+        # Extender área con rowlen/columnlen (pueden definir filas/cols sin datos)
         cfg_top = (config.get("rowlen") or {})
         cfg_col = (config.get("columnlen") or {})
+        if isinstance(cfg_top, dict):
+            for k in cfg_top:
+                if str(k).isdigit():
+                    i = int(k)
+                    if i > max_r: max_r = i
+        if isinstance(cfg_col, dict):
+            for k in cfg_col:
+                if str(k).isdigit():
+                    i = int(k)
+                    if i > max_c: max_c = i
 
-        if max_r < 0:
-            max_r = max((int(k) for k in cfg_top.keys() if str(k).isdigit()), default=-1)
-        if max_c < 0:
-            max_c = max((int(k) for k in cfg_col.keys() if str(k).isdigit()), default=-1)
-
+        # Mínimo 10×5 si no hay nada
         if max_r < 0:
             max_r = 9
         if max_c < 0:
@@ -89,14 +109,21 @@ class LayoutRenderer:
 
     def column_width(self, col_index: int) -> int:
         sheet = self.ctx.sheet_data or {}
-        columnlen = (sheet.get("config") or {}).get("columnlen") or {}
-        if str(col_index) in columnlen:
-            return int(columnlen[str(col_index)])
-        return self.DEFAULT_COL_WIDTH
+        raw = (sheet.get("config") or {}).get("columnlen") or {}
+        val = self._get_length(raw, col_index)
+        return val if val is not None else self.DEFAULT_COL_WIDTH
 
     def row_height(self, row_index: int) -> int:
         sheet = self.ctx.sheet_data or {}
-        rowlen = (sheet.get("config") or {}).get("rowlen") or {}
-        if str(row_index) in rowlen:
-            return int(rowlen[str(row_index)])
-        return self.DEFAULT_ROW_HEIGHT
+        raw = (sheet.get("config") or {}).get("rowlen") or {}
+        val = self._get_length(raw, row_index)
+        return val if val is not None else self.DEFAULT_ROW_HEIGHT
+
+    @staticmethod
+    def _get_length(raw, index: int):
+        if isinstance(raw, dict):
+            key = str(index)
+            return int(raw[key]) if key in raw else None
+        if isinstance(raw, list):
+            return int(raw[index]) if index < len(raw) and raw[index] is not None else None
+        return None

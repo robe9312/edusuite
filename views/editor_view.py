@@ -221,10 +221,66 @@ class _Handler(BaseHTTPRequestHandler):
                     sheet_data = data.get("sheetData", data.get("sheets", []))
                     if not isinstance(sheet_data, list):
                         sheet_data = []
+                    # Compute active_area for each sheet from actual data
+                    for sheet in sheet_data:
+                        if not isinstance(sheet, dict):
+                            continue
+                        max_r = -1
+                        max_c = -1
+                        grid = sheet.get("data") or []
+                        for r, row in enumerate(grid):
+                            if not isinstance(row, list):
+                                continue
+                            for c, cell in enumerate(row):
+                                if cell is not None:
+                                    if r > max_r: max_r = r
+                                    if c > max_c: max_c = c
+                        cd = sheet.get("celldata") or []
+                        for cell in cd:
+                            r = cell.get("r")
+                            c = cell.get("c")
+                            if r is not None and r > max_r: max_r = r
+                            if c is not None and c > max_c: max_c = c
+                        cfg = sheet.get("config") or {}
+                        for kr in (cfg.get("rowlen") or {}):
+                            if str(kr).isdigit():
+                                i = int(kr)
+                                if i > max_r: max_r = i
+                        for kc in (cfg.get("columnlen") or {}):
+                            if str(kc).isdigit():
+                                i = int(kc)
+                                if i > max_c: max_c = i
+                        for merge_key in ("merge", "merges", "Merge"):
+                            raw = cfg.get(merge_key)
+                            if isinstance(raw, dict):
+                                spans = raw.values()
+                            elif isinstance(raw, list):
+                                spans = raw
+                            else:
+                                continue
+                            for span in spans:
+                                if not isinstance(span, dict):
+                                    continue
+                                er = span.get("r", 0) + span.get("rs", 1) - 1
+                                ec = span.get("c", 0) + span.get("cs", 1) - 1
+                                if er > max_r: max_r = er
+                                if ec > max_c: max_c = ec
+                        # Sin padding — exactamente el contenido
+                        # Si no hay datos, mínimo 5×4 para que se vea una cuadrícula
+                        if max_r < 0: max_r = 4
+                        if max_c < 0: max_c = 3
+                        meta = sheet.get("metadata") or {}
+                        meta["active_area"] = {"top": 0, "left": 0, "bottom": max_r, "right": max_c}
+                        sheet["metadata"] = meta
                     wb_json = json.dumps(sheet_data)
                     log_msg(f"SAVE section_id={sid} wb_size={len(sheet_data)} sheets")
-                    update_section_workbook(int(sid), wb_json)
-                    sec = get_custom_section(int(sid))
+                    try:
+                        update_section_workbook(int(sid), wb_json)
+                        sec = get_custom_section(int(sid))
+                    except Exception as e:
+                        log_msg(f"ERROR al guardar sección {sid}: {e}")
+                        self.send_error(500, f"Error al guardar: {e}")
+                        return
                     if sec:
                         doc_id = sec.get("document_id")
                         log_msg(f"SAVE sec_name={sec.get('name')} doc_id={doc_id}")

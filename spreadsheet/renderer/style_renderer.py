@@ -91,6 +91,24 @@ class StyleRenderer:
             align |= Qt.AlignBottom
         return align
 
+    def cell_wrap(self, v: Optional[Dict[str, Any]]) -> bool:
+        if not isinstance(v, dict):
+            return False
+        tb = v.get("tb")
+        if tb in (1, "1", True):
+            return True
+        ct = v.get("ct")
+        if isinstance(ct, dict):
+            tb2 = ct.get("tb")
+            if tb2 in (1, "1", True):
+                return True
+        return False
+
+    def cell_border(self, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not isinstance(v, dict):
+            return None
+        return v.get("bd")
+
     def display_value(self, v: Optional[Dict[str, Any]]) -> str:
         """Retorna el valor a mostrar: resultado de fórmula si existe, sino texto crudo."""
         if not isinstance(v, dict):

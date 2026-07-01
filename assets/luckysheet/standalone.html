@@ -100,54 +100,79 @@ if (isHeadless) {
         _engineSheet = luckysheet.getluckysheetfile();
     };
 
-    function _snapshotFormulas(files, si) {
+    /*
+     * El diff se lee desde `file.data` (grid 2D), NO desde `celldata`.
+     * `celldata` puede estar vacío o desactualizado tras setCellValue.
+     * `data` es la fuente autoritativa en Luckysheet.
+     *
+     * Estrategia: snapshot completo antes/después de TODAS las celdas,
+     * no solo las que tienen fórmula `f`. Así capturamos:
+     *   - Celdas cuyo valor/edit cambió
+     *   - Celdas con fórmula que recalculó
+     *   - Celdas que fueron limpiadas (null/undefined)
+     *   - Celdas cuyo formato cambió indirectamente
+     */
+    function _snapshotAll(si) {
+        var files = luckysheet.getluckysheetfile();
+        if (!Array.isArray(files)) files = [files];
         var f = files[si];
         if (!f) return {};
         var snap = {};
-        var cells = f.celldata || [];
-        for (var i = 0; i < cells.length; i++) {
-            var c = cells[i];
-            if (c.v && typeof c.v === 'object' && c.v.f) {
-                snap[c.r + ':' + c.c] = JSON.parse(JSON.stringify(c.v));
+        var grid = f.data || [];
+        for (var r = 0; r < grid.length; r++) {
+            var row = grid[r];
+            if (!Array.isArray(row)) continue;
+            for (var c = 0; c < row.length; c++) {
+                var cell = row[c];
+                if (cell !== null && cell !== undefined && typeof cell === 'object') {
+                    snap[r + ':' + c] = JSON.parse(JSON.stringify(cell));
+                }
             }
         }
         return snap;
     }
 
-    function _findCell(celldata, r, c) {
-        for (var i = 0; i < celldata.length; i++) {
-            if (celldata[i].r === r && celldata[i].c === c) return JSON.parse(JSON.stringify(celldata[i].v));
-        }
-        return null;
-    }
-
-    function _doEdit(si, editFn) {
-        var files = _engineSheet;
-        if (!Array.isArray(files)) files = [files];
-        var file = files[si];
-        if (!file) return JSON.stringify({type:'error',message:'Sheet index out of range: '+si});
-
+    /*
+     * Ejecuta editFn, snapshotea TODO antes/después,
+     * y retorna array de celdas que cambiaron (nuevas, modificadas o limpiadas).
+     * Siempre lee fresh desde luckysheet.getluckysheetfile().
+     */
+    function _execEdit(si, editFn) {
         if (si > 0) { try { luckysheet.setSheetActive(si); } catch(e) {} }
-
-        var formulaBefore = _snapshotFormulas(files, si);
-
-        editFn(file);
-
-        var newCells = file.celldata || [];
+        var before = _snapshotAll(si);
+        editFn();
+        var files = luckysheet.getluckysheetfile();
+        if (!Array.isArray(files)) files = [files];
+        var f = files[si];
+        _engineSheet = files;
         var changed = [];
-
-        for (var i = 0; i < newCells.length; i++) {
-            var cell = newCells[i];
-            if (cell.v && typeof cell.v === 'object' && cell.v.f) {
-                var key = cell.r + ':' + cell.c;
-                if (JSON.stringify(cell.v) !== JSON.stringify(formulaBefore[key])) {
-                    changed.push({r: cell.r, c: cell.c, v: cell.v});
+        if (!f) return changed;
+        var grid = f.data || [];
+        var seen = {};
+        // 1. Celdas que existen después del edit
+        for (var r = 0; r < grid.length; r++) {
+            var row = grid[r];
+            if (!Array.isArray(row)) continue;
+            for (var c = 0; c < row.length; c++) {
+                var cell = row[c];
+                if (cell !== null && cell !== undefined && typeof cell === 'object') {
+                    var key = r + ':' + c;
+                    seen[key] = true;
+                    if (JSON.stringify(cell) !== JSON.stringify(before[key])) {
+                        changed.push({r: r, c: c, v: cell});
+                    }
                 }
             }
         }
-
-        _engineSheet = luckysheet.getluckysheetfile();
-        return JSON.stringify({type:'changed', sheet: si, cells: changed});
+        // 2. Celdas que existían antes pero ahora son null/undefined (limpiadas)
+        for (var key in before) {
+            if (!seen[key]) {
+                var parts = key.split(':');
+                var rr = parseInt(parts[0]), cc = parseInt(parts[1]);
+                changed.push({r: rr, c: cc, v: null});
+            }
+        }
+        return changed;
     }
 
     window.__engineHandleMessage = function(msg) {
@@ -155,33 +180,35 @@ if (isHeadless) {
 
         if (msg.type === 'setCell') {
             var si = msg.sheet || 0;
-            var editedBefore = _findCell((_engineSheet[si] || {}).celldata || [], msg.row, msg.col);
-            return _doEdit(si, function(file) {
-                luckysheet.setCellValue(msg.row, msg.col, msg.value);
+            var changed = _execEdit(si, function() {
+                luckysheet.setCellValue(msg.row, msg.col, msg.value, true);
             });
+            return JSON.stringify({type:'changed', sheet: si, cells: changed});
         }
 
         if (msg.type === 'setRange') {
             var si = msg.sheet || 0;
-            return _doEdit(si, function(file) {
+            var changed = _execEdit(si, function() {
                 for (var i = 0; i < msg.cells.length; i++) {
                     var c = msg.cells[i];
-                    luckysheet.setCellValue(c.row, c.col, c.value);
+                    luckysheet.setCellValue(c.row, c.col, c.value, true);
                 }
             });
+            return JSON.stringify({type:'changed', sheet: si, cells: changed});
         }
 
         if (msg.type === 'clearRange') {
             var si = msg.sheet || 0;
-            return _doEdit(si, function(file) {
+            var changed = _execEdit(si, function() {
                 var sr = msg.startRow, sc = msg.startCol;
                 var er = msg.endRow, ec = msg.endCol;
                 for (var r = sr; r <= er; r++) {
                     for (var c = sc; c <= ec; c++) {
-                        luckysheet.setCellValue(r, c, '');
+                        luckysheet.setCellValue(r, c, '', true);
                     }
                 }
             });
+            return JSON.stringify({type:'changed', sheet: si, cells: changed});
         }
 
         if (msg.type === 'getWorkbook') {
